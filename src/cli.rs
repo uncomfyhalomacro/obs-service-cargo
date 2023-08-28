@@ -1,6 +1,8 @@
 use clap::Parser;
 use std::path::PathBuf;
 
+
+#[derive(Parser, Debug)]
 #[command(
     author,
     name = "cargo_vendor",
@@ -9,7 +11,6 @@ use std::path::PathBuf;
     after_long_help = "Bugs can be reported on GitHub: https://github.com/uncomfyhalomacro/obs-service-cargo_vendor-rs/issues",
     max_term_width = 98
 )]
-#[derive(Parser, Debug)]
 pub struct Opts {
     #[arg(long, help = "Where to find unpacked sources")]
     pub srcdir: PathBuf,
