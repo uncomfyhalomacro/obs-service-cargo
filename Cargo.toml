@@ -1,0 +1,14 @@
+[package]
+name = "obs-service-cargo-vendor-rs"
+description = "OBS Source Service to vendor all crates.io and dependencies for Rust project locally. Executable rewritten in Rust."
+authors = ["Soc Virnyl Estela <socvirnyl.estela@gmail.com>"]
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[[bin]]
+name = "cargo_vendor"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.4.0", features = ["derive"] }
