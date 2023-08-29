@@ -1,4 +1,4 @@
-name: Build Wayshot
+name: Build OBS Service Cargo Vendor
 
 on: [push, pull_request]
 
