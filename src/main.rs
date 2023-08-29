@@ -1,5 +1,5 @@
 use clap::Parser;
-use obs_service_cargo_vendor_rs::Opts;
+use obs_service_cargo_vendor_rs::cli::Opts;
 
 fn main() {
     let args = Opts::parse();
