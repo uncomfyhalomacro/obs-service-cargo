@@ -1,5 +1,12 @@
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use std::path::PathBuf;
+
+#[derive(ValueEnum, Default, Debug, Clone)]
+pub enum Compression {
+    #[default]
+    Zst,
+    Gz,
+}
 
 #[derive(Parser, Debug)]
 #[command(
@@ -12,20 +19,27 @@ use std::path::PathBuf;
 )]
 pub struct Opts {
     #[arg(long, help = "Where to find unpacked sources")]
-    pub srcdir: PathBuf,
+    pub srcdir: Option<PathBuf>,
     #[arg(long, help = "Where to find packed sources")]
-    pub srctar: PathBuf,
-    #[arg(long, help = "Where to put vendor.tar* and cargo_config")]
+    pub srctar: Option<PathBuf>,
+
+    #[arg(long, help = "Where to output vendor.tar* and cargo_config")]
     pub outdir: PathBuf,
-    #[arg(long, help = "What compression algorithm to use e.g. zst")]
-    pub compression: String,
+
+    #[arg(
+        long,
+        value_enum,
+        default_value_t,
+        help = "What compression algorithm to use."
+    )]
+    pub compression: Compression,
     #[arg(
         long,
         help = "Tag some files for multi-vendor and multi-cargo_config projects"
     )]
-    pub tag: String,
+    pub tag: Option<String>,
     #[arg(long, help = "Other cargo manifest files to sync with during vendor")]
     pub cargotoml: Vec<PathBuf>,
-    #[arg(long, help = "Update dependencies or not")]
+    #[arg(long, default_value_t, help = "Update dependencies or not")]
     pub update: bool,
 }
