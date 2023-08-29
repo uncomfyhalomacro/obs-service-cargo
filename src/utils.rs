@@ -97,14 +97,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn unsupported_extension() {
-        let vec_unsupported_exts = vec![
+    fn unsupported_extensions() {
+        let unsupported_exts = vec![
             Path::new("/uwu.txt"),
             Path::new("muwu.mi"),
             Path::new("uwu.zip"),
         ];
-        for someext in vec_unsupported_exts {
+        for someext in unsupported_exts {
             assert_eq!(true, get_compression_type(someext).is_err());
+        }
+    }
+
+    #[test]
+    fn supported_extensions() {
+        let supported_exts = vec![
+            Path::new("uwu.tar.xz"),
+            Path::new("uwu.tar.zst"),
+            Path::new("uwu.tar.zstd"),
+            Path::new("uwu.tar.gz"),
+        ];
+        for someext in supported_exts {
+            assert_eq!(true, get_compression_type(someext).is_ok());
         }
     }
 }
