@@ -31,7 +31,6 @@ pub struct Opts {
 
     #[arg(long, help = "Where to output vendor.tar* and cargo_config")]
     pub outdir: PathBuf,
-
     #[arg(
         long,
         value_enum,
@@ -49,4 +48,3 @@ pub struct Opts {
     #[arg(long, default_value_t, help = "Update dependencies or not")]
     pub update: bool,
 }
-

@@ -1,6 +1,6 @@
+use crate::cli::Compression;
 use std::fs;
 use std::path::{Path, PathBuf};
-use crate::cli::Compression;
 
 pub fn get_project_root(srcdir: impl AsRef<Path>) -> Result<impl AsRef<Path>, ()> {
     let target_file = "Cargo.toml";
