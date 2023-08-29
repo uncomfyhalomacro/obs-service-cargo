@@ -3,10 +3,10 @@ use std::path::PathBuf;
 
 #[derive(ValueEnum, Default, Debug, Clone)]
 pub enum Compression {
-    #[default]
     Gz,
     Xz,
     Zip,
+    #[default]
     Zst,
 }
 
@@ -20,13 +20,17 @@ pub enum Compression {
     max_term_width = 98
 )]
 pub struct Opts {
-    #[arg(long, help = "Where to find unpacked sources")]
+    #[arg(
+        long,
+        help = "Where to find unpacked sources",
+        conflicts_with = "srctar"
+    )]
     pub srcdir: Option<PathBuf>,
     #[arg(long, help = "Where to find packed sources")]
     pub srctar: Option<PathBuf>,
 
     #[arg(long, help = "Where to output vendor.tar* and cargo_config")]
-    pub outdir: PathBuf,
+    pub outdir: Option<PathBuf>,
 
     #[arg(
         long,
@@ -45,3 +49,4 @@ pub struct Opts {
     #[arg(long, default_value_t, help = "Update dependencies or not")]
     pub update: bool,
 }
+
