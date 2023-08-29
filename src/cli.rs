@@ -11,7 +11,11 @@ use std::path::PathBuf;
     max_term_width = 98
 )]
 pub struct Opts {
-    #[arg(long, help = "Where to find unpacked sources")]
+    #[arg(
+        long,
+        help = "Where to find unpacked sources",
+        conflicts_with = "srctar"
+    )]
     pub srcdir: PathBuf,
     #[arg(long, help = "Where to find packed sources")]
     pub srctar: PathBuf,
