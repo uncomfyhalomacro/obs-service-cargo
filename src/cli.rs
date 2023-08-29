@@ -4,8 +4,10 @@ use std::path::PathBuf;
 #[derive(ValueEnum, Default, Debug, Clone)]
 pub enum Compression {
     #[default]
-    Zst,
     Gz,
+    Xz,
+    Zip,
+    Zst,
 }
 
 #[derive(Parser, Debug)]
