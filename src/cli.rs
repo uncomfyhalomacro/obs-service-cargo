@@ -5,7 +5,6 @@ use std::path::PathBuf;
 pub enum Compression {
     Gz,
     Xz,
-    Zip,
     #[default]
     Zst,
 }
