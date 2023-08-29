@@ -1,4 +1,5 @@
 use crate::cli::Compression;
+use core::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -57,19 +58,53 @@ pub fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> std::io::Re
     Ok(())
 }
 
-pub fn get_compression_type(file: impl AsRef<Path>) -> Result<Compression, ()> {
-    match &file.as_ref().extension() {
-        Some(ext) => {
-            let ext = ext.to_str().expect("Failed to convert to str");
-            match ext {
+#[derive(Debug)]
+pub struct UnsupportedExtError {
+    ext: Option<String>,
+}
+
+impl fmt::Display for UnsupportedExtError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let msg = match &self.ext {
+            None => "No extension found for file. Please check if file has an extension or if it is actually a file".to_string(),
+            Some(err) => format!("{} is unsupported. If you think this is incorrect, please open an issue at
+    https://github.com/uncomfyhalomacro/obs-service-cargo_vendor-rs/issues", err)
+        };
+        write!(f, "{}", &msg)
+    }
+}
+
+pub fn get_compression_type(file: &Path) -> Result<Compression, UnsupportedExtError> {
+    match file.extension() {
+        Some(ext) => match ext.to_str().map(|s| s.to_string()) {
+            Some(s) => match s.as_str() {
                 "zst" => Ok(Compression::Zst),
                 "zstd" => Ok(Compression::Zst),
                 "gz" => Ok(Compression::Gz),
-                "zip" => Ok(Compression::Zip),
                 "xz" => Ok(Compression::Xz),
-                _ => Err(()),
-            }
+                _ => Err(UnsupportedExtError {
+                    ext: Some(s.to_string()),
+                }),
+            },
+            None => Err(UnsupportedExtError { ext: None }),
+        },
+        None => Err(UnsupportedExtError { ext: None }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unsupported_extension() {
+        let vec_unsupported_exts = vec![
+            Path::new("/uwu.txt"),
+            Path::new("muwu.mi"),
+            Path::new("uwu.zip"),
+        ];
+        for someext in vec_unsupported_exts {
+            assert_eq!(true, get_compression_type(someext).is_err());
         }
-        None => Err(()),
     }
 }
