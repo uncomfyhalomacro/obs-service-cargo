@@ -30,7 +30,7 @@ pub struct Opts {
     pub srctar: Option<PathBuf>,
 
     #[arg(long, help = "Where to output vendor.tar* and cargo_config")]
-    pub outdir: Option<PathBuf>,
+    pub outdir: PathBuf,
 
     #[arg(
         long,
