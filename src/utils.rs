@@ -1,7 +1,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use crate::cli::Compression;
 
-fn get_project_root(srcdir: impl AsRef<Path>) -> Result<impl AsRef<Path>, ()> {
+pub fn get_project_root(srcdir: impl AsRef<Path>) -> Result<impl AsRef<Path>, ()> {
     let target_file = "Cargo.toml";
     let mut target_dir = PathBuf::from("/");
     for entry in std::fs::read_dir(srcdir).expect("Error reading directory") {
@@ -23,7 +24,7 @@ fn get_project_root(srcdir: impl AsRef<Path>) -> Result<impl AsRef<Path>, ()> {
     }
 }
 
-fn cargo_vendor(srcdir: impl AsRef<Path>) -> std::io::Result<()> {
+pub fn cargo_vendor(srcdir: impl AsRef<Path>) -> std::io::Result<()> {
     println!("Vendoring deps at {}", srcdir.as_ref().display());
     let cargo_command = std::process::Command::new("cargo")
         .arg("-vvv")
@@ -42,7 +43,7 @@ fn cargo_vendor(srcdir: impl AsRef<Path>) -> std::io::Result<()> {
     Ok(())
 }
 
-fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> std::io::Result<()> {
+pub fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> std::io::Result<()> {
     fs::create_dir_all(&dst)?;
     for entry in fs::read_dir(src)? {
         let entry = entry?;
@@ -54,4 +55,21 @@ fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> std::io::Result
         }
     }
     Ok(())
+}
+
+pub fn get_compression_type(file: impl AsRef<Path>) -> Result<Compression, ()> {
+    match &file.as_ref().extension() {
+        Some(ext) => {
+            let ext = ext.to_str().expect("Failed to convert to str");
+            match ext {
+                "zst" => Ok(Compression::Zst),
+                "zstd" => Ok(Compression::Zst),
+                "gz" => Ok(Compression::Gz),
+                "zip" => Ok(Compression::Zip),
+                "xz" => Ok(Compression::Xz),
+                _ => Err(()),
+            }
+        }
+        None => Err(()),
+    }
 }
