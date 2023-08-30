@@ -1,7 +1,9 @@
+use crate::cli::Compression;
+use core::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-fn get_project_root(srcdir: impl AsRef<Path>) -> Result<impl AsRef<Path>, ()> {
+pub fn get_project_root(srcdir: impl AsRef<Path>) -> Result<impl AsRef<Path>, ()> {
     let target_file = "Cargo.toml";
     let mut target_dir = PathBuf::from("/");
     for entry in std::fs::read_dir(srcdir).expect("Error reading directory") {
@@ -23,7 +25,7 @@ fn get_project_root(srcdir: impl AsRef<Path>) -> Result<impl AsRef<Path>, ()> {
     }
 }
 
-fn cargo_vendor(srcdir: impl AsRef<Path>) -> std::io::Result<()> {
+pub fn cargo_vendor(srcdir: impl AsRef<Path>) -> std::io::Result<()> {
     println!("Vendoring deps at {}", srcdir.as_ref().display());
     let cargo_command = std::process::Command::new("cargo")
         .arg("-vvv")
@@ -42,7 +44,7 @@ fn cargo_vendor(srcdir: impl AsRef<Path>) -> std::io::Result<()> {
     Ok(())
 }
 
-fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> std::io::Result<()> {
+pub fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> std::io::Result<()> {
     fs::create_dir_all(&dst)?;
     for entry in fs::read_dir(src)? {
         let entry = entry?;
@@ -54,4 +56,68 @@ fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> std::io::Result
         }
     }
     Ok(())
+}
+
+#[derive(Debug)]
+pub struct UnsupportedExtError {
+    ext: Option<String>,
+}
+
+impl fmt::Display for UnsupportedExtError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let msg = match &self.ext {
+            None => "No extension found for file. Please check if file has an extension or if it is actually a file".to_string(),
+            Some(err) => format!("{} is unsupported. If you think this is incorrect, please open an issue at
+    https://github.com/uncomfyhalomacro/obs-service-cargo_vendor-rs/issues", err)
+        };
+        write!(f, "{}", &msg)
+    }
+}
+
+pub fn get_compression_type(file: &Path) -> Result<Compression, UnsupportedExtError> {
+    match file.extension() {
+        Some(ext) => match ext.to_str().map(|s| s.to_string()) {
+            Some(s) => match s.as_str() {
+                "zst" => Ok(Compression::Zst),
+                "zstd" => Ok(Compression::Zst),
+                "gz" => Ok(Compression::Gz),
+                "xz" => Ok(Compression::Xz),
+                _ => Err(UnsupportedExtError {
+                    ext: Some(s.to_string()),
+                }),
+            },
+            None => Err(UnsupportedExtError { ext: None }),
+        },
+        None => Err(UnsupportedExtError { ext: None }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unsupported_extensions() {
+        let unsupported_exts = vec![
+            Path::new("/uwu.txt"),
+            Path::new("muwu.mi"),
+            Path::new("uwu.zip"),
+        ];
+        for someext in unsupported_exts {
+            assert_eq!(true, get_compression_type(someext).is_err());
+        }
+    }
+
+    #[test]
+    fn supported_extensions() {
+        let supported_exts = vec![
+            Path::new("uwu.tar.xz"),
+            Path::new("uwu.tar.zst"),
+            Path::new("uwu.tar.zstd"),
+            Path::new("uwu.tar.gz"),
+        ];
+        for someext in supported_exts {
+            assert_eq!(true, get_compression_type(someext).is_ok());
+        }
+    }
 }
