@@ -1,5 +1,7 @@
 use crate::cli::Compression;
-use core::fmt;
+use std::error::Error;
+use std::fmt;
+use std::fmt::{Debug, Display};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -60,19 +62,20 @@ pub fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> std::io::Re
 
 #[derive(Debug)]
 pub struct UnsupportedExtError {
-    ext: Option<String>,
+    pub ext: Option<String>,
 }
 
 impl fmt::Display for UnsupportedExtError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let msg = match &self.ext {
-            None => "No extension found for file. Please check if file has an extension or if it is actually a file".to_string(),
-            Some(err) => format!("{} is unsupported. If you think this is incorrect, please open an issue at
-    https://github.com/uncomfyhalomacro/obs-service-cargo_vendor-rs/issues", err)
+            None => "No extension found for file. Please check if file has an extension or if it is actually a file.".to_string(),
+            Some(err) => format!("{} is unsupported. If you think this is incorrect, please open an issue at https://github.com/uncomfyhalomacro/obs-service-cargo_vendor-rs/issues.", err)
         };
         write!(f, "{}", &msg)
     }
 }
+
+impl Error for UnsupportedExtError {}
 
 pub fn get_compression_type(file: &Path) -> Result<Compression, UnsupportedExtError> {
     match file.extension() {

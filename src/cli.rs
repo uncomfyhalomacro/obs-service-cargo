@@ -1,7 +1,11 @@
 use clap::{Parser, ValueEnum};
-use std::path::PathBuf;
+use std::error::Error;
+use std::fmt;
+use std::fmt::{Debug, Display};
+use std::{error, path::PathBuf};
 
-use crate::utils::get_compression_type;
+use crate::utils;
+use crate::utils::{get_compression_type, UnsupportedExtError};
 
 #[derive(ValueEnum, Default, Debug, Clone)]
 pub enum Compression {
@@ -51,18 +55,53 @@ pub struct Opts {
     pub update: bool,
 }
 
+#[derive(Debug)]
 pub enum SrcKind {
     SrcTar,
     SrcDir,
 }
 
+#[derive(Debug)]
+struct SrcKindError {
+    src: Option<SrcKind>,
+}
+
+impl fmt::Display for SrcKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            SrcKind::SrcTar => write!(f, "SrcKind::SrcTar"),
+            SrcKind::SrcDir => write!(f, "SrcKind::SrcDir"),
+        }
+    }
+}
+
+impl fmt::Display for SrcKindError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let src = &self.src;
+        let msg = match src {
+            Some(kind) => {
+                if matches!(kind, SrcKind::SrcTar) {
+                    format!("Expected `SrcKind::SrcDir`, got `{}`", kind)
+                } else {
+                    format!("Expected `SrcKind::SrcTar`, got `{}`", kind)
+                }
+            }
+            None => "Could not determine src kind".to_string(),
+        };
+
+        write!(f, "{}", &msg)
+    }
+}
+
+impl Error for SrcKindError {}
+
 pub trait Src {
-    fn get_srckind(&self) -> Option<SrcKind>;
-    fn srctar_compression_type(&self) -> Compression;
+    fn srckind(&self) -> Option<SrcKind>;
+    fn srctar_compression_type(&self) -> Result<Compression, Box<dyn error::Error>>;
 }
 
 impl Src for Opts {
-    fn get_srckind(&self) -> Option<SrcKind> {
+    fn srckind(&self) -> Option<SrcKind> {
         if self.srcdir.is_some() {
             self.srcdir
                 .as_deref()
@@ -76,23 +115,23 @@ impl Src for Opts {
         }
     }
 
-    fn srctar_compression_type(&self) -> Compression {
-        match self.get_srckind() {
+    fn srctar_compression_type(&self) -> Result<Compression, Box<dyn error::Error>> {
+        match self.srckind() {
             Some(kind) => {
-                assert_eq!(true, matches!(kind, SrcKind::SrcTar))
-            }
-            None => panic!("Could not determine source kind"),
-        }
-        let compression_type = self.srctar.as_deref().map(|s| get_compression_type(s));
-        match compression_type {
-            None => panic!("Cannot determine compression type"),
-            Some(c) => match c {
-                Ok(t) => t,
-                Err(err) => {
-                    eprintln!("{}", err);
-                    panic!();
+                if matches!(kind, SrcKind::SrcTar) {
+                    let compression_type = self.srctar.as_deref().map(|s| get_compression_type(s));
+                    match compression_type {
+                        None => panic!(),
+                        Some(c) => match c {
+                            Ok(t) => Ok(t),
+                            Err(err) => Err(Box::new(err)),
+                        },
+                    }
+                } else {
+                    Err(Box::new(SrcKindError { src: Some(kind) }))
                 }
-            },
+            }
+            None => Err(Box::new(SrcKindError { src: None })),
         }
     }
 }
@@ -110,20 +149,15 @@ mod tests {
             // Always remember to add `--` as the first arg.
             let cmds = vec!["--", "--srcdir", "test", "--outdir", "test"];
             let opt = Opts::parse_from(&cmds);
-            match opt.get_srckind() {
-                Some(kind) => {
-                    assert_eq!(true, matches!(kind, SrcKind::SrcDir));
-                }
-                None => panic!("Not satisfied"),
-            }
+            opt.srckind()
+                .map(|f| assert_eq!(true, matches!(f, SrcKind::SrcDir)));
         }
 
         #[test]
-        #[should_panic]
         fn srcdir_errors_on_getting_compression_type() {
             let cmds = vec!["--", "--srcdir", "test", "--outdir", "test"];
             let opt = Opts::parse_from(&cmds);
-            opt.srctar_compression_type();
+            assert_eq!(true, opt.srctar_compression_type().is_err());
         }
     }
 
@@ -141,29 +175,38 @@ mod tests {
         fn is_srctar_xz() {
             let cmds = vec!["--", "--srctar", "test.tar.xz", "--outdir", "test"];
             let opt = Opts::parse_from(&cmds);
-            assert_eq!(
-                true,
-                matches!(opt.srctar_compression_type(), Compression::Xz)
-            );
+            match opt.srctar_compression_type() {
+                Ok(c) => assert_eq!(true, matches!(c, Compression::Xz)),
+                Err(err) => {
+                    eprintln!("Expected xz or lzma compressed file, got `{}`", err);
+                    panic!("Not an xz compressed tar file")
+                }
+            }
         }
 
         #[test]
         fn is_srctar_zst() {
             let cmds = vec!["--", "--srctar", "test.tar.zst", "--outdir", "test"];
             let opt = Opts::parse_from(&cmds);
-            assert_eq!(
-                true,
-                matches!(opt.srctar_compression_type(), Compression::Zst)
-            );
+            match opt.srctar_compression_type() {
+                Ok(c) => assert_eq!(true, matches!(c, Compression::Zst)),
+                Err(err) => {
+                    eprintln!("Expected zstd compressed file, got `{}`", err);
+                    panic!("Not a zst compressed tar file")
+                }
+            }
         }
         #[test]
         fn is_srctar_gz() {
             let cmds = vec!["--", "--srctar", "test.tar.gz", "--outdir", "test"];
             let opt = Opts::parse_from(&cmds);
-            assert_eq!(
-                true,
-                matches!(opt.srctar_compression_type(), Compression::Gz)
-            );
+            match opt.srctar_compression_type() {
+                Ok(c) => assert_eq!(true, matches!(c, Compression::Gz)),
+                Err(err) => {
+                    eprintln!("Expected gz compressed file, got `{}`", err);
+                    panic!("Not a gz compressed tar file")
+                }
+            }
         }
     }
 }
