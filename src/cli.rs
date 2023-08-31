@@ -1,11 +1,9 @@
+use crate::utils::{get_compression_type, UnsupportedExtError};
 use clap::{Parser, ValueEnum};
 use std::error::Error;
 use std::fmt;
 use std::fmt::{Debug, Display};
 use std::{error, path::PathBuf};
-
-use crate::utils;
-use crate::utils::{get_compression_type, UnsupportedExtError};
 
 #[derive(ValueEnum, Default, Debug, Clone)]
 pub enum Compression {
