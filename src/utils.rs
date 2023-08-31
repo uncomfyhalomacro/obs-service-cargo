@@ -1,3 +1,5 @@
+pub mod compress;
+
 use crate::cli::Compression;
 use std::error::Error;
 use std::fmt;
