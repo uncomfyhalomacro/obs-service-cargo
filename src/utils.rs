@@ -3,28 +3,30 @@ use std::error::Error;
 use std::fmt;
 use std::fmt::{Debug, Display};
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 
-pub fn get_project_root(srcdir: impl AsRef<Path>) -> Result<impl AsRef<Path>, ()> {
+pub fn get_manifest_file(srcdir: impl AsRef<Path>) -> Result<PathBuf, io::Error> {
     let target_file = "Cargo.toml";
-    let mut target_dir = PathBuf::from("/");
+
     for entry in std::fs::read_dir(srcdir).expect("Error reading directory") {
-        let entry = &entry.expect("Error reading content in dir");
-        let pathdir = &entry.path();
-        let is_manifest_file = format!("{}/{}", pathdir.display(), target_file);
-        let is_manifest_file = Path::new(&is_manifest_file);
-        if is_manifest_file.exists() && is_manifest_file.is_file() {
-            target_dir.push(&is_manifest_file.parent().expect("File has no parent"));
-            break;
-        } else {
-            continue;
+        let dir = entry?.path();
+        let filename = dir.file_name();
+        match filename {
+            Some(f) => {
+                if f.to_str() == Some(target_file) {
+                    return Ok(dir);
+                } else {
+                    continue;
+                }
+            }
+            None => continue,
         }
     }
-    if target_dir == PathBuf::from("/") {
-        Err(())
-    } else {
-        Ok(target_dir)
-    }
+    Err(io::Error::new(
+        io::ErrorKind::Other,
+        "Not able to determine project root",
+    ))
 }
 
 pub fn cargo_vendor(srcdir: impl AsRef<Path>) -> std::io::Result<()> {
@@ -46,7 +48,7 @@ pub fn cargo_vendor(srcdir: impl AsRef<Path>) -> std::io::Result<()> {
     Ok(())
 }
 
-pub fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> std::io::Result<()> {
+pub fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> Result<(), io::Error> {
     fs::create_dir_all(&dst)?;
     for entry in fs::read_dir(src)? {
         let entry = entry?;
