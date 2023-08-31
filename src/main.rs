@@ -93,19 +93,20 @@ fn process_srcdir(
             let basename = &srcdir.as_ref().file_name().expect("No basename");
             let dir = dir.path().join(&basename);
             utils::copy_dir_all(&srcdir, &dir).expect("Cannot copy");
-            let mut prjroot = utils::get_manifest_file(&dir)
+            let prjroot = utils::get_manifest_file(&dir)
                 .expect("Something went wrong")
                 .parent()
                 .expect("What is parent path?")
                 .to_owned();
             utils::cargo_vendor(&prjroot).expect("Error. Cannot vendor");
-            let vendor_tar_path = format!("{}/vendor.tar", &outdir.as_ref().to_str().unwrap());
-            println!("{}", &vendor_tar_path);
-            let vendor_tar_path = fs::File::create(&vendor_tar_path).unwrap();
-            let mut ar = tar::Builder::new(vendor_tar_path);
-            prjroot.push("vendor");
-            ar.append_dir_all("vendor/", &prjroot).unwrap();
-            ar.finish().expect("Something wrong");
+            utils::compress::targz(&outdir, &prjroot).expect("Failed to write compressed archive.");
+            // let vendor_tar_path = format!("{}/vendor.tar", &outdir.as_ref().to_str().unwrap());
+            // println!("{}", &vendor_tar_path);
+            // let vendor_tar_path = fs::File::create(&vendor_tar_path).unwrap();
+            // let mut ar = tar::Builder::new(vendor_tar_path);
+            // prjroot.push("vendor");
+            // ar.append_dir_all("vendor/", &prjroot).unwrap();
+            // ar.finish().expect("Something wrong");
         }
         Err(err) => {
             eprintln! {"{}", err};
