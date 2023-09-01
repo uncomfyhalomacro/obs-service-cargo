@@ -1,8 +1,4 @@
 use clap::Parser;
-use obs_service_cargo_vendor_rs::{
-    cli::{Compression, Opts, Src, SrcKind},
-    utils::{self, cargo_vendor},
-};
 // use std::io::prelude::*;
 // use std::{
 //     fs,
@@ -10,10 +6,13 @@ use obs_service_cargo_vendor_rs::{
 //     process::ExitCode,
 // };
 // use tar;
-// use tempfile;
+// use tempfile
+
+use obs_service_cargo_vendor_rs::cli::Opts;
 
 // fn main() -> ExitCode {
 fn main() {
+    let args = Opts::parse();
     println!("Hello World");
 }
 
