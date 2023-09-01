@@ -1,9 +1,9 @@
 use crate::utils::{get_compression_type, UnsupportedExtError};
-use clap::{Parser, ValueEnum};
+use clap::{Args, Parser, ValueEnum};
+use std::path::PathBuf;
 use std::error::Error;
 use std::fmt;
 use std::fmt::{Debug, Display};
-use std::{error, path::PathBuf};
 
 #[derive(ValueEnum, Default, Debug, Clone)]
 pub enum Compression {
@@ -14,30 +14,8 @@ pub enum Compression {
 }
 
 #[derive(Debug)]
-pub struct CompressionError {
+struct CompressionError {
     compression: Option<Compression>,
-}
-
-impl fmt::Display for CompressionError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let msg = match &self.compression {
-            Some(comp) => format!("Got compression: `{}`", comp),
-            None => "Unknown compression".to_string(),
-        };
-        write!(f, "{}", &msg)
-    }
-}
-
-impl Error for CompressionError {}
-
-impl fmt::Display for Compression {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Compression::Gz => write!(f, "Compressio::Gz"),
-            Compression::Xz => write!(f, "Compressio::Xz"),
-            Compression::Zst => write!(f, "Compressio::Zst"),
-        }
-    }
 }
 
 #[derive(Parser, Debug)]
@@ -47,21 +25,13 @@ impl fmt::Display for Compression {
     version,
     about = "OBS Source Service to vendor all crates.io and dependencies for Rust project locally",
     after_long_help = "Bugs can be reported on GitHub: https://github.com/uncomfyhalomacro/obs-service-cargo_vendor-rs/issues",
-    max_term_width = 98
+    max_term_width = 120
 )]
 pub struct Opts {
-    #[arg(
-        long,
-        help = "Where to find unpacked sources",
-        conflicts_with = "srctar"
-    )]
-    pub srcdir: Option<PathBuf>,
-
-    #[arg(long, help = "Where to find packed sources")]
-    pub srctar: Option<PathBuf>,
-
-    #[arg(long, help = "Where to output vendor.tar* and cargo_config")]
-    pub outdir: PathBuf,
+    #[clap(flatten)]
+    pub srctar: Option<SrcTar>,
+    #[clap(flatten)]
+    pub srcdir: Option<SrcDir>,
     #[arg(
         long,
         value_enum,
@@ -78,159 +48,23 @@ pub struct Opts {
     pub cargotoml: Vec<PathBuf>,
     #[arg(long, default_value_t, help = "Update dependencies or not")]
     pub update: bool,
+    #[arg(long, help = "Where to output vendor.tar* and cargo_config")]
+    pub outdir: PathBuf,
 }
 
-#[derive(Debug, Clone)]
-pub enum SrcKind {
-    SrcTar,
-    SrcDir,
+#[derive(Args, Debug)]
+pub struct SrcTar {
+    #[arg(long, help = "Where to find packed sources", conflicts_with = "srcdir")]
+    pub srctar: PathBuf,
 }
 
-#[derive(Debug, Clone)]
-struct SrcKindError {
-    src: Option<SrcKind>,
+#[derive(Args, Debug)]
+pub struct SrcDir {
+    #[arg(
+        long,
+        help = "Where to find unpacked sources",
+        conflicts_with = "srctar"
+    )]
+    pub srcdir: PathBuf,
 }
 
-impl fmt::Display for SrcKind {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            SrcKind::SrcTar => write!(f, "SrcKind::SrcTar"),
-            SrcKind::SrcDir => write!(f, "SrcKind::SrcDir"),
-        }
-    }
-}
-
-impl fmt::Display for SrcKindError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let msg = match self.src.clone() {
-            Some(kind) if matches!(kind, SrcKind::SrcTar) => {
-                format!("Expected `SrcKind::SrcDir`, got `{}`", kind)
-            }
-            Some(kind) => format!("Expected `SrcKind::SrcTar`, got `{}`", kind),
-            None => "Could not determine src kind".to_string(),
-        };
-
-        write!(f, "{}", msg)
-    }
-}
-
-impl Error for SrcKindError {}
-
-pub trait SrcOpts {
-    fn srckind(&self) -> Option<SrcKind>;
-    fn get_srctar_compression(&self) -> Result<Compression, Box<dyn error::Error>>;
-}
-
-pub trait Vendor<T> {
-    fn generate();
-}
-
-impl SrcOpts for Opts {
-    fn srckind(&self) -> Option<SrcKind> {
-        if self.srcdir.is_some() {
-            self.srcdir
-                .as_deref()
-                .map(|_| -> SrcKind { SrcKind::SrcDir })
-        } else if self.srctar.is_some() {
-            self.srctar
-                .as_deref()
-                .map(|_| -> SrcKind { SrcKind::SrcTar })
-        } else {
-            None
-        }
-    }
-    fn get_srctar_compression(&self) -> Result<Compression, Box<dyn error::Error>> {
-        match self.srckind() {
-            Some(kind) => {
-                if matches!(kind, SrcKind::SrcTar) {
-                    let compression_type = self.srctar.as_deref().map(|s| get_compression_type(s));
-                    match compression_type {
-                        None => Err(Box::new(CompressionError { compression: None })),
-                        Some(c) => match c {
-                            Ok(t) => Ok(t),
-                            Err(err) => Err(Box::new(err)),
-                        },
-                    }
-                } else {
-                    Err(Box::new(SrcKindError { src: Some(kind) }))
-                }
-            }
-            None => Err(Box::new(SrcKindError { src: None })),
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-
-    use super::*;
-
-    mod srcdir {
-        use super::*;
-
-        #[test]
-        fn is_using_srcdir() {
-            // Always remember to add `--` as the first arg.
-            let cmds = vec!["--", "--srcdir", "test", "--outdir", "test"];
-            let opt = Opts::parse_from(&cmds);
-            opt.srckind()
-                .map(|f| assert_eq!(true, matches!(f, SrcKind::SrcDir)));
-        }
-
-        #[test]
-        fn srcdir_errors_on_getting_compression_type() {
-            let cmds = vec!["--", "--srcdir", "test", "--outdir", "test"];
-            let opt = Opts::parse_from(&cmds);
-            assert_eq!(true, opt.get_srctar_compression().is_err());
-        }
-    }
-
-    mod srctar {
-        use super::*;
-
-        #[test]
-        fn is_using_srctar() {
-            // Always remember to add `--` as the first arg.
-            let cmds = vec!["--", "--srctar", "test", "--outdir", "test"];
-            let opt = Opts::parse_from(&cmds);
-        }
-
-        #[test]
-        fn is_srctar_xz() {
-            let cmds = vec!["--", "--srctar", "test.tar.xz", "--outdir", "test"];
-            let opt = Opts::parse_from(&cmds);
-            match opt.get_srctar_compression() {
-                Ok(c) => assert_eq!(true, matches!(c, Compression::Xz)),
-                Err(err) => {
-                    eprintln!("Expected xz or lzma compressed file, got `{}`", err);
-                    panic!("Not an xz compressed tar file")
-                }
-            }
-        }
-
-        #[test]
-        fn is_srctar_zst() {
-            let cmds = vec!["--", "--srctar", "test.tar.zst", "--outdir", "test"];
-            let opt = Opts::parse_from(&cmds);
-            match opt.get_srctar_compression() {
-                Ok(c) => assert_eq!(true, matches!(c, Compression::Zst)),
-                Err(err) => {
-                    eprintln!("Expected zstd compressed file, got `{}`", err);
-                    panic!("Not a zst compressed tar file")
-                }
-            }
-        }
-        #[test]
-        fn is_srctar_gz() {
-            let cmds = vec!["--", "--srctar", "test.tar.gz", "--outdir", "test"];
-            let opt = Opts::parse_from(&cmds);
-            match opt.get_srctar_compression() {
-                Ok(c) => assert_eq!(true, matches!(c, Compression::Gz)),
-                Err(err) => {
-                    eprintln!("Expected gz compressed file, got `{}`", err);
-                    panic!("Not a gz compressed tar file")
-                }
-            }
-        }
-    }
-}
