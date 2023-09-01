@@ -1,4 +1,5 @@
 pub mod compress;
+pub mod decompress;
 
 use crate::cli::Compression;
 use std::error::Error;
