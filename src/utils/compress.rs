@@ -13,7 +13,7 @@ pub fn targz(outdir: impl AsRef<Path>, srcpath: impl AsRef<Path>) -> Result<(), 
     use flate2::Compression;
 
     let src = srcpath.as_ref().to_path_buf();
-    let outtar = fs::File::create(format!("{}", &outdir.as_ref().to_str().unwrap()))?;
+    let outtar = fs::File::create(outdir.as_ref())?;
     let enc = GzEncoder::new(outtar, Compression::default());
     let mut tar = tar::Builder::new(enc);
     tar.append_dir_all(".", &src)?;
@@ -25,7 +25,7 @@ pub fn tarzst(outdir: impl AsRef<Path>, srcpath: impl AsRef<Path>) -> Result<(),
     use zstd::stream::Encoder;
     use zstd::DEFAULT_COMPRESSION_LEVEL;
     let src = srcpath.as_ref().to_path_buf();
-    let outtar = fs::File::create(format!("{}", &outdir.as_ref().to_str().unwrap()))?;
+    let outtar = fs::File::create(outdir.as_ref())?;
     let enc = Encoder::new(outtar, DEFAULT_COMPRESSION_LEVEL)?.auto_finish();
     let mut tar = tar::Builder::new(enc);
     tar.append_dir_all(".", &src)?;
@@ -37,7 +37,7 @@ pub fn tarxz(outdir: impl AsRef<Path>, srcpath: impl AsRef<Path>) -> Result<(), 
     use xz2::write::XzEncoder;
 
     let src = srcpath.as_ref().to_path_buf();
-    let outtar = fs::File::create(format!("{}", &outdir.as_ref().to_str().unwrap()))?;
+    let outtar = fs::File::create(outdir.as_ref())?;
     let enc = XzEncoder::new(outtar, 6);
     let mut tar = tar::Builder::new(enc);
     tar.append_dir_all(".", &src)?;

@@ -1,124 +1,44 @@
 use clap::Parser;
-// use std::io::prelude::*;
-// use std::{
-//     fs,
-//     path::{Path, PathBuf},
-//     process::ExitCode,
-// };
-// use tar;
-// use tempfile
+use obs_service_cargo_vendor_rs::cli;
+use obs_service_cargo_vendor_rs::utils;
+use std::io;
 
-use obs_service_cargo_vendor_rs::cli::Opts;
+const PREFIX: &str = ".obs-service-cargo-vendor";
+// Create custom error type for processing
 
-// fn main() -> ExitCode {
-fn main() {
-    let args = Opts::parse();
-    println!("Hello World");
+fn main() -> Result<(), io::Error> {
+    let args = cli::Opts::parse();
+    let tmpdir = tempfile::Builder::new()
+        .prefix(PREFIX)
+        .rand_bytes(8)
+        .tempdir()
+        .expect("Failed to create temporary working directory.");
+    let workdir = tmpdir.path();
+    // One is required over the other and there can't be both anyway.
+    // NOTE: Because our struct `Opt` requires srctar or srcdir but not both, we put
+    // some `unreachable!` macros because they cannot be reached after all.
+    if args.srcdir.is_some() {
+        let src = match &args.srcdir {
+            Some(val) => val,
+            None => unreachable!(),
+        };
+        src.vendor(&args, &src.srcdir)?;
+    } else if args.srctar.is_some() {
+        let src = match &args.srctar {
+            Some(val) => val.to_owned(),
+            None => unreachable!(),
+        };
+        if src.srctar.exists() {
+            src.decompress(workdir)?;
+            let prjdir = utils::get_manifest_file(workdir)?.to_owned();
+            let prjdir = prjdir.parent().expect("Not parent directory");
+            src.vendor(&args, prjdir)?;
+        }
+    } else {
+        unreachable!()
+    };
+
+    // Remove temporary directory.
+    tmpdir.close()?;
+    Ok(())
 }
-
-//     match run_cargo_vendor() {
-//         Ok(ok) => ok,
-//         Err(err) => err,
-//     }
-// }
-
-// fn run_cargo_vendor() -> Result<ExitCode, ExitCode> {
-//     let args = Opts::parse();
-//     // NOTE: This is spaghetti boilerplate. I will remove this in the future to
-//     // cleanup the logic.
-//     let exit_status = match &args.srckind() {
-//         Some(kind) => {
-//             if matches!(kind, SrcKind::SrcTar) {
-//                 let srcpath = args
-//                     .srctar
-//                     .as_deref()
-//                     .expect("Source tar cannot be determined")
-//                     .to_path_buf()
-//                     .canonicalize()
-//                     .unwrap();
-//                 let compression_type = match args.srctar_compression_type() {
-//                     Ok(t) => t,
-//                     Err(err) => {
-//                         eprintln!("{}", err);
-//                         return Err(ExitCode::FAILURE);
-//                     }
-//                 };
-
-//                 let vendor_compression_type = args.compression;
-//                 let update: bool = args.update;
-
-//                 process_srctar(&srcpath, compression_type, vendor_compression_type, update);
-//             } else if matches!(kind, SrcKind::SrcDir) {
-//                 let srcpath = args
-//                     .srcdir
-//                     .as_deref()
-//                     .expect("Source dir cannot be determined")
-//                     .to_path_buf()
-//                     .canonicalize()
-//                     .unwrap()
-//                     .to_path_buf();
-
-//                 let vendor_compression_type = args.compression;
-//                 let update: bool = args.update;
-//                 let tag = args.tag;
-//                 let outdir = args.outdir;
-
-//                 // I wonder if this can be just a trait method? 🤔
-//                 process_srcdir(&srcpath, vendor_compression_type, update, tag, outdir);
-//             }
-//             Ok(ExitCode::SUCCESS)
-//         }
-//         None => Err(ExitCode::FAILURE),
-//     };
-
-//     exit_status
-// }
-
-// fn process_srctar(
-//     srctar: impl AsRef<Path>,
-//     srctar_compression_type: Compression,
-//     vendor_compression_type: Compression,
-//     update: bool,
-// ) {
-// }
-
-// fn process_srcdir(
-//     srcdir: impl AsRef<Path>,
-//     vendor_compression_type: Compression,
-//     update: bool,
-//     tag: Option<String>,
-//     outdir: impl AsRef<Path>,
-// ) {
-//     match tempfile::Builder::new()
-//         .prefix(".obs-service-cargo-vendor")
-//         .rand_bytes(8)
-//         .tempdir()
-//     {
-//         Ok(dir) => {
-//             let basename = &srcdir.as_ref().file_name().expect("No basename");
-//             let dir = dir.path().join(&basename);
-//             utils::copy_dir_all(&srcdir, &dir).expect("Cannot copy");
-//             let prjroot = utils::get_manifest_file(&dir)
-//                 .expect("Something went wrong")
-//                 .parent()
-//                 .expect("What is parent path?")
-//                 .to_owned();
-//             utils::cargo_vendor(&prjroot).expect("Error. Cannot vendor");
-//             utils::compress::targz(&outdir, &prjroot).expect("Failed to write compressed archive.");
-//             utils::compress::tarzst(&outdir, &prjroot)
-//                 .expect("Failed to write compressed archive.");
-//             utils::compress::tarxz(&outdir, &prjroot).expect("Failed to write compressed archive.");
-//             // let vendor_tar_path = format!("{}/vendor.tar", &outdir.as_ref().to_str().unwrap());
-//             // println!("{}", &vendor_tar_path);
-//             // let vendor_tar_path = fs::File::create(&vendor_tar_path).unwrap();
-//             // let mut ar = tar::Builder::new(vendor_tar_path);
-//             // prjroot.push("vendor");
-//             // ar.append_dir_all("vendor/", &prjroot).unwrap();
-//             // ar.finish().expect("Something wrong");
-//         }
-//         Err(err) => {
-//             eprintln! {"{}", err};
-//             panic!("Something went wrong!");
-//         }
-//     };
-// }

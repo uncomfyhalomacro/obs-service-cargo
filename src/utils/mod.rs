@@ -3,8 +3,9 @@ pub mod decompress;
 
 use crate::cli::Compression;
 use std::error::Error;
+use std::ffi::OsStr;
 use std::fmt;
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -13,17 +14,12 @@ pub fn get_manifest_file(srcdir: impl AsRef<Path>) -> Result<PathBuf, io::Error>
     let target_file = "Cargo.toml";
 
     for entry in std::fs::read_dir(srcdir).expect("Error reading directory") {
-        let dir = entry?.path();
-        let filename = dir.file_name();
-        match filename {
-            Some(f) => {
-                if f.to_str() == Some(target_file) {
-                    return Ok(dir);
-                } else {
-                    continue;
-                }
-            }
-            None => continue,
+        let mut dir = entry?.path().to_owned();
+        dir.push(target_file);
+        if dir.exists() && dir.is_file() {
+            return Ok(dir);
+        } else {
+            continue;
         }
     }
     Err(io::Error::new(
