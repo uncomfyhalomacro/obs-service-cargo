@@ -3,11 +3,6 @@ use std::io;
 use std::path::Path;
 use tar;
 
-/*
-NOTE: See https://docs.rs/async-compression/latest/async_compression
-I doubt we even need that but just putting the link there in case
-TODO: Make this work for general stuff. Strcitly using it for vendor defeats its purpose
-*/
 pub fn targz(
     topdir: &str,
     outdir: impl AsRef<Path>,
@@ -15,7 +10,6 @@ pub fn targz(
 ) -> Result<(), io::Error> {
     use flate2::write::GzEncoder;
     use flate2::Compression;
-
     let src = srcpath.as_ref().to_path_buf();
     let outtar = fs::File::create(outdir.as_ref())?;
     let enc = GzEncoder::new(outtar, Compression::default());
@@ -47,7 +41,6 @@ pub fn tarxz(
     srcpath: impl AsRef<Path>,
 ) -> Result<(), io::Error> {
     use xz2::write::XzEncoder;
-
     let src = srcpath.as_ref().to_path_buf();
     let outtar = fs::File::create(outdir.as_ref())?;
     let enc = XzEncoder::new(outtar, 6);
