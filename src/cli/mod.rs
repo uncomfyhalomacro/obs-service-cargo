@@ -1,22 +1,10 @@
-use crate::utils::{get_compression_type, UnsupportedExtError};
 use clap::{Args, Parser, ValueEnum};
-use std::path::PathBuf;
 use std::error::Error;
-use std::fmt;
 use std::fmt::{Debug, Display};
+use std::path::PathBuf;
+use std::{fmt, io};
 
-#[derive(ValueEnum, Default, Debug, Clone)]
-pub enum Compression {
-    Gz,
-    Xz,
-    #[default]
-    Zst,
-}
-
-#[derive(Debug)]
-struct CompressionError {
-    compression: Option<Compression>,
-}
+use crate::utils::{decompress, get_compression_type, UnsupportedExtError};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -58,6 +46,27 @@ pub struct SrcTar {
     pub srctar: PathBuf,
 }
 
+impl SrcTar {
+    fn extension(&self) -> Result<Compression, UnsupportedExtError> {
+        get_compression_type(&self.srctar)
+    }
+
+    fn decompress(&self, outdir: PathBuf) -> Result<(), io::Error> {
+        match self.extension() {
+            Ok(comp) => match comp {
+                Compression::Gz => decompress::targz(outdir, &self.srctar),
+                Compression::Xz => decompress::tarxz(outdir, &self.srctar),
+                Compression::Zst => decompress::tarzst(outdir, &self.srctar),
+            },
+            Err(err) => Err(io::Error::new(io::ErrorKind::Other, err)),
+        }
+    }
+    
+    fn vendor(&self) -> Result<(), io::Error> {
+        todo!()
+    }
+}
+
 #[derive(Args, Debug)]
 pub struct SrcDir {
     #[arg(
@@ -68,3 +77,16 @@ pub struct SrcDir {
     pub srcdir: PathBuf,
 }
 
+impl SrcDir {
+    fn vendor(&self) -> Result<(), io::Error> {
+        todo!()
+    }
+}
+
+#[derive(ValueEnum, Default, Debug, Clone)]
+pub enum Compression {
+    Gz,
+    Xz,
+    #[default]
+    Zst,
+}
