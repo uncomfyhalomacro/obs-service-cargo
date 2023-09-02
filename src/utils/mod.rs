@@ -1,7 +1,7 @@
 pub mod compress;
 pub mod decompress;
 
-use crate::cli::Compression;
+use crate::cli::{Compression, Opts};
 use std::error::Error;
 
 use std::fmt;
@@ -9,6 +9,8 @@ use std::fmt::Debug;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::process;
+use tracing::{debug, error, info, warn};
 
 pub fn get_manifest_file(srcdir: impl AsRef<Path>) -> Result<PathBuf, io::Error> {
     let target_file = "Cargo.toml";
@@ -28,22 +30,77 @@ pub fn get_manifest_file(srcdir: impl AsRef<Path>) -> Result<PathBuf, io::Error>
     ))
 }
 
-pub fn cargo_vendor(srcdir: impl AsRef<Path>) -> std::io::Result<()> {
-    println!("Vendoring deps at {}", srcdir.as_ref().display());
-    let cargo_command = std::process::Command::new("cargo")
-        .arg("-vvv")
-        .arg("vendor")
-        .current_dir(&srcdir)
-        .output()
-        .expect("Something went wrong");
-    let output = unsafe { String::from_utf8_unchecked(cargo_command.stdout) };
-    if cargo_command.status.success() {
-        println!("{}", &output);
-        println!("Vendoring dependencies was successful");
+pub fn vendor(opts: impl AsRef<Opts>, prjdir: impl AsRef<Path>) -> Result<(), io::Error> {
+    let mut prjdir = prjdir.as_ref().to_path_buf();
+    let update = &opts.as_ref().update;
+    let mut outdir = opts.as_ref().outdir.to_owned();
+    let cargo_config = outdir.join("cargo_config");
+
+    if *update {
+        info!("Updating dependencies before vendor");
+        let cargo_update = process::Command::new("cargo")
+            .arg("update")
+            .arg("-vv")
+            .current_dir(&prjdir)
+            .output()
+            .expect("Failed to run cargo update.");
+        if !cargo_update.status.success() {
+            error!("Failed to run cargo update:\n{}", unsafe {
+                String::from_utf8_unchecked(cargo_update.stderr)
+            });
+        } else {
+            info!("Successfully ran cargo update ❤️");
+        }
     } else {
-        eprintln!("{}", &output);
-        panic!("Failed to vendor dependencies");
-    }
+        warn!("Disabled update of dependencies. You may reenable it for security updates.");
+    };
+
+    let cargo_vendor = process::Command::new("cargo")
+        .arg("vendor")
+        .arg("-vv")
+        .current_dir(&prjdir)
+        .output()
+        .expect("Failed to run cargo vendor");
+
+    if !cargo_vendor.status.success() {
+        error!("Failed to run cargo vendor:\n{}", unsafe {
+            std::str::from_utf8_unchecked(&cargo_vendor.stderr)
+        });
+    } else {
+        info!(
+            "Generated cargo config from vendor with content:
+
+```
+{}
+```
+",
+            unsafe { std::str::from_utf8_unchecked(&cargo_vendor.stdout) }
+        );
+        fs::write(cargo_config, cargo_vendor.stdout)?;
+    };
+
+    info!("Proceeding to create compressed archive of vendored deps...");
+    prjdir.push("vendor/");
+    let compression: &Compression = &opts.as_ref().compression;
+    debug!("Compression is of {}", &compression);
+    match compression {
+        Compression::Gz => {
+            outdir.push("vendor.tar.gz");
+            debug!("Compressed to {}", outdir.to_string_lossy());
+            compress::targz("vendor", outdir, &prjdir)?
+        }
+        Compression::Xz => {
+            outdir.push("vendor.tar.xz");
+            debug!("Compressed to {}", outdir.to_string_lossy());
+            compress::tarxz("vendor", outdir, &prjdir)?
+        }
+        Compression::Zst => {
+            outdir.push("vendor.tar.zst");
+            debug!("Compressed to {}", outdir.to_string_lossy());
+            compress::tarzst("vendor", outdir, &prjdir)?
+        }
+    };
+    info!("Finished creating {} compressed tarball", compression);
     Ok(())
 }
 
