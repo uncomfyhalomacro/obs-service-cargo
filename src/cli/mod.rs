@@ -1,11 +1,10 @@
 use clap::{Args, Parser, ValueEnum};
 use std::fmt::{self, Display};
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process;
-use std::str::EscapeDebug;
+
 use std::{fs, io};
-use tracing::{debug, error, info, span, warn, Level};
+use tracing::{debug, error, info, warn};
 
 use crate::utils::{compress, decompress, get_compression_type, UnsupportedExtError};
 
