@@ -2,6 +2,7 @@ use std::fs;
 use std::io;
 use std::path::Path;
 use tar;
+use tracing::{debug, error, info};
 
 pub fn targz(
     topdir: &str,
@@ -10,12 +11,17 @@ pub fn targz(
 ) -> Result<(), io::Error> {
     use flate2::write::GzEncoder;
     use flate2::Compression;
+
     let src = srcpath.as_ref().to_path_buf();
     let outtar = fs::File::create(outdir.as_ref())?;
     let enc = GzEncoder::new(outtar, Compression::default());
     let mut tar = tar::Builder::new(enc);
     tar.append_dir_all(topdir, &src)?;
     tar.finish()?;
+    info!(
+        "Successfully created Gz compressed archive for {}",
+        src.to_string_lossy()
+    );
     Ok(())
 }
 
@@ -32,6 +38,10 @@ pub fn tarzst(
     let mut tar = tar::Builder::new(enc);
     tar.append_dir_all(topdir, &src)?;
     tar.finish()?;
+    info!(
+        "Successfully created Zstd compressed archive for {}",
+        src.to_string_lossy()
+    );
     Ok(())
 }
 
@@ -47,5 +57,9 @@ pub fn tarxz(
     let mut tar = tar::Builder::new(enc);
     tar.append_dir_all(topdir, &src)?;
     tar.finish()?;
+    info!(
+        "Successfully created Xz compressed archive for {}",
+        src.to_string_lossy()
+    );
     Ok(())
 }
