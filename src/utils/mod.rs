@@ -149,9 +149,9 @@ pub fn get_compression_type(file: &Path) -> Result<Compression, UnsupportedExtEr
         let extension = match file.extension() {
             Some(ext) => match ext.to_str() {
                 Some(s) => s,
-                None => "unknown extension"
+                None => "unknown extension",
             },
-            None => "unknown extension"
+            None => "unknown extension",
         };
         let mimetype = match info {
             Some(ext) => ext.mime_type(),
