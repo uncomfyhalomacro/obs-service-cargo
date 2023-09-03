@@ -16,6 +16,7 @@ flate2 = { version = "1.0.27" }
 infer = "0.15.0"
 tar = "0.4.40"
 tempfile = "3.8.0"
+terminfo = "0.8.0"
 tracing = "0.1.37"
 tracing-subscriber = "0.3.17"
 xz2 = "0.1.7"
