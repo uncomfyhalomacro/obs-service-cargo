@@ -4,7 +4,7 @@ use std::fmt::{self, Display};
 use std::path::{Path, PathBuf};
 use std::process;
 use std::{fs, io};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, warn, Level};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -54,11 +54,11 @@ pub struct SrcTar {
 }
 
 impl SrcTar {
-    pub fn extension(&self) -> Result<Compression, UnsupportedExtError> {
+    pub fn get_compression(&self) -> Result<Compression, UnsupportedExtError> {
         get_compression_type(&self.srctar)
     }
     pub fn decompress(&self, outdir: impl AsRef<Path>) -> Result<(), io::Error> {
-        match self.extension() {
+        match self.get_compression() {
             Ok(comp) => match comp {
                 Compression::Gz => decompress::targz(outdir.as_ref(), &self.srctar),
                 Compression::Xz => decompress::tarxz(outdir.as_ref(), &self.srctar),

@@ -2,7 +2,7 @@ use clap::Parser;
 use obs_service_cargo_vendor_rs::cli;
 use obs_service_cargo_vendor_rs::utils;
 use std::io;
-use tracing::{debug, info};
+use tracing::{debug, info, warn, error, Level};
 
 const PREFIX: &str = ".obs-service-cargo-vendor";
 const VENDOR_EXAMPLE: &str = "

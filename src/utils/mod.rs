@@ -2,15 +2,23 @@ pub mod compress;
 pub mod decompress;
 
 use crate::cli::{Compression, Opts};
+use infer;
 use std::error::Error;
-
 use std::fmt;
 use std::fmt::Debug;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, warn, Level};
+
+const XZ_EXTS: &[&str] = &["xz"];
+const ZST_EXTS: &[&str] = &["zstd", "zst"];
+const GZ_EXTS: &[&str] = &["gz", "gzip"];
+const XZ_MIME: &str = "application/x-xz";
+const ZST_MIME: &str = "application/zstd";
+const GZ_MIME: &str = "application/gzip";
+const SUPPORTED_MIME_TYPES: &[&str] = &[XZ_MIME, ZST_MIME, GZ_MIME];
 
 pub fn get_manifest_file(srcdir: impl AsRef<Path>) -> Result<PathBuf, io::Error> {
     let target_file = "Cargo.toml";
@@ -136,20 +144,57 @@ impl fmt::Display for UnsupportedExtError {
 impl Error for UnsupportedExtError {}
 
 pub fn get_compression_type(file: &Path) -> Result<Compression, UnsupportedExtError> {
-    match file.extension() {
-        Some(ext) => match ext.to_str().map(|s| s.to_string()) {
-            Some(s) => match s.as_str() {
-                "zst" => Ok(Compression::Zst),
-                "zstd" => Ok(Compression::Zst),
-                "gz" => Ok(Compression::Gz),
-                "xz" => Ok(Compression::Xz),
-                _ => Err(UnsupportedExtError {
-                    ext: Some(s.to_string()),
-                }),
+    if file.is_file() {
+        let info = infer::get_from_path(&file).expect("File is known");
+        let extension = match file.extension() {
+            Some(ext) => match ext.to_str() {
+                Some(s) => s,
+                None => "unknown extension"
             },
-            None => Err(UnsupportedExtError { ext: None }),
-        },
-        None => Err(UnsupportedExtError { ext: None }),
+            None => "unknown extension"
+        };
+        let mimetype = match info {
+            Some(ext) => ext.mime_type(),
+            None => "unknown mime type",
+        };
+        if !SUPPORTED_MIME_TYPES.contains(&mimetype) {
+            return Err(UnsupportedExtError {
+                ext: Some(mimetype.to_string()),
+            });
+        } else {
+            match mimetype {
+                XZ_MIME => {
+                    if XZ_EXTS.contains(&extension) {
+                        info!("File has the correct supported extension {}", extension);
+                    } else {
+                        warn!("File has an incorrect extension: {}. Make sure it's the right compression AND extension to avoid confusion", extension);
+                    };
+                    Ok(Compression::Xz)
+                }
+                GZ_MIME => {
+                    if GZ_EXTS.contains(&extension) {
+                        info!("File has the correct supported extension {}", extension);
+                    } else {
+                        warn!("File has an incorrect extension: {}. Make sure it's the right compression AND extension to avoid confusion", extension);
+                    };
+                    Ok(Compression::Gz)
+                }
+                ZST_MIME => {
+                    if ZST_EXTS.contains(&extension) {
+                        info!("File has the correct supported extension {}", extension);
+                    } else {
+                        warn!("File has an incorrect extension: {}. Make sure it's the right compression AND extension to avoid confusion", extension);
+                    };
+                    Ok(Compression::Zst)
+                }
+                _ => unreachable!(),
+            }
+        }
+    } else {
+        error!("This is a directory!");
+        Err(UnsupportedExtError {
+            ext: Some("Directory".to_string()),
+        })
     }
 }
 
