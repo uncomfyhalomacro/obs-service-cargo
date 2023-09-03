@@ -2,8 +2,9 @@ use clap::Parser;
 use obs_service_cargo_vendor_rs::cli;
 use obs_service_cargo_vendor_rs::utils;
 use std::io;
-use tracing::{debug, info, warn, error, Level};
-
+use std::io::IsTerminal;
+use terminfo::{capability as cap, Database};
+use tracing::{debug, error, info, warn, Level};
 const PREFIX: &str = ".obs-service-cargo-vendor";
 const VENDOR_EXAMPLE: &str = "
 Examples of how to modify your spec file to use vendored libraries can be found online:
@@ -17,10 +18,44 @@ WARNING: To avoid cargo install rebuilding the binary in the install stage
 // Create custom error type for processing
 
 fn main() -> Result<(), io::Error> {
-    tracing_subscriber::fmt::init();
+    let args = cli::Opts::parse();
+    let terminfodb = Database::from_env().expect("Loaded environment");
+
+    let is_termcolorsupported = match terminfodb.get::<cap::MaxColors>() {
+        Some(_) => true,
+        None => false,
+    };
+
+    let to_color = match std::io::stdout().is_terminal() {
+        true => {
+            let coloroption = &args.color;
+            match coloroption {
+                Some(option) => match option {
+                    clap::ColorChoice::Auto => {
+                        if is_termcolorsupported {
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                    clap::ColorChoice::Always => true,
+                    clap::ColorChoice::Never => false,
+                },
+                None => {
+                    // Auto in a sense
+                    if is_termcolorsupported {
+                        true
+                    } else {
+                        false
+                    }
+                }
+            }
+        }
+        false => todo!(),
+    };
+    tracing_subscriber::fmt().with_ansi(to_color).init();
 
     info!("🎢 Starting OBS Service Cargo Vendor.");
-    let args = cli::Opts::parse();
     debug!(?args.srcdir, "SrcDir");
     let tmpdir = tempfile::Builder::new()
         .prefix(PREFIX)

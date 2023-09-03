@@ -38,6 +38,8 @@ pub struct Opts {
     pub update: bool,
     #[arg(long, help = "Where to output vendor.tar* and cargo_config")]
     pub outdir: PathBuf,
+    #[arg(long, default_value = "auto", help = "Whether to color output or not")]
+    pub color: Option<clap::ColorChoice>,
 }
 
 impl AsRef<Opts> for Opts {
