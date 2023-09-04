@@ -3,7 +3,9 @@ use std::io;
 use std::io::Seek;
 use std::path::Path;
 use tar;
-use tracing::{debug, error, info};
+
+#[allow(unused_imports)]
+use tracing::{debug, error, info, warn};
 
 pub fn targz(outdir: impl AsRef<Path>, srcpath: impl AsRef<Path>) -> Result<(), io::Error> {
     use flate2::bufread::GzDecoder;

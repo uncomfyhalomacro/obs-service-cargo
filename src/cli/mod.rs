@@ -1,9 +1,10 @@
-use crate::utils::{self, compress, decompress, get_compression_type, UnsupportedExtError};
+use crate::utils::{self, decompress, get_compression_type, UnsupportedExtError};
 use clap::{Args, Parser, ValueEnum};
 use std::fmt::{self, Display};
+use std::io;
 use std::path::{Path, PathBuf};
-use std::process;
-use std::{fs, io};
+
+#[allow(unused_imports)]
 use tracing::{debug, error, info, warn, Level};
 
 #[derive(Parser, Debug)]
@@ -12,7 +13,9 @@ use tracing::{debug, error, info, warn, Level};
     name = "cargo_vendor",
     version,
     about = "OBS Source Service to vendor all crates.io and dependencies for Rust project locally",
-    after_long_help = "Bugs can be reported on GitHub: https://github.com/uncomfyhalomacro/obs-service-cargo_vendor-rs/issues",
+    after_long_help = "Set verbosity and tracing through `RUST_LOG` environmental variable e.g. `RUST_LOG=trace`
+
+Bugs can be reported on GitHub: https://github.com/uncomfyhalomacro/obs-service-cargo_vendor-rs/issues",
     max_term_width = 120
 )]
 pub struct Opts {
@@ -38,8 +41,14 @@ pub struct Opts {
     pub update: bool,
     #[arg(long, help = "Where to output vendor.tar* and cargo_config")]
     pub outdir: PathBuf,
-    #[arg(long, default_value = "auto", help = "Whether to color output or not")]
-    pub color: Option<clap::ColorChoice>,
+    #[arg(
+        long,
+        default_value = "auto",
+        default_missing_value = "always",
+        value_name = "WHEN",
+        help = "Whether WHEN to color output or not"
+    )]
+    pub color: clap::ColorChoice,
 }
 
 impl AsRef<Opts> for Opts {
@@ -74,7 +83,14 @@ impl SrcTar {
         opts: impl AsRef<Opts>,
         prjdir: impl AsRef<Path>,
     ) -> Result<(), io::Error> {
-        utils::vendor(opts, prjdir)
+        utils::vendor(opts, prjdir, None)
+    }
+    pub fn cargotomls(
+        &self,
+        opts: impl AsRef<Opts>,
+        workdir: impl AsRef<Path>,
+    ) -> Result<(), io::Error> {
+        utils::cargotomls(opts, workdir)
     }
 }
 
@@ -94,7 +110,14 @@ impl SrcDir {
         opts: impl AsRef<Opts>,
         prjdir: impl AsRef<Path>,
     ) -> Result<(), io::Error> {
-        utils::vendor(opts, prjdir)
+        utils::vendor(opts, prjdir, None)
+    }
+    pub fn cargotomls(
+        &self,
+        opts: impl AsRef<Opts>,
+        workdir: impl AsRef<Path>,
+    ) -> Result<(), io::Error> {
+        utils::cargotomls(opts, workdir)
     }
 }
 

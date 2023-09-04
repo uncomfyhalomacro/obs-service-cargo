@@ -2,7 +2,9 @@ use std::fs;
 use std::io;
 use std::path::Path;
 use tar;
-use tracing::{debug, error, info};
+
+#[allow(unused_imports)]
+use tracing::{debug, error, info, warn};
 
 pub fn targz(
     topdir: &str,

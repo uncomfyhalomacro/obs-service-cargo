@@ -2,53 +2,81 @@ pub mod compress;
 pub mod decompress;
 
 use crate::cli::{Compression, Opts};
+use crate::consts::{GZ_EXTS, GZ_MIME, SUPPORTED_MIME_TYPES, XZ_EXTS, XZ_MIME, ZST_EXTS, ZST_MIME};
+
 use infer;
 use std::error::Error;
 use std::fmt;
 use std::fmt::Debug;
 use std::fs;
 use std::io;
+use std::os::unix::prelude::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process;
-use tracing::{debug, error, info, warn, Level};
 
-const XZ_EXTS: &[&str] = &["xz"];
-const ZST_EXTS: &[&str] = &["zstd", "zst"];
-const GZ_EXTS: &[&str] = &["gz", "gzip"];
-const XZ_MIME: &str = "application/x-xz";
-const ZST_MIME: &str = "application/zstd";
-const GZ_MIME: &str = "application/gzip";
-const SUPPORTED_MIME_TYPES: &[&str] = &[XZ_MIME, ZST_MIME, GZ_MIME];
+#[allow(unused_imports)]
+use tracing::{debug, error, info, warn, Level};
 
 pub fn get_manifest_file(srcdir: impl AsRef<Path>) -> Result<PathBuf, io::Error> {
     let target_file = "Cargo.toml";
-
-    for entry in std::fs::read_dir(srcdir).expect("Error reading directory") {
-        let mut dir = entry?.path().to_owned();
+    let dcanonical = srcdir
+        .as_ref()
+        .canonicalize()
+        .expect("Canonical")
+        .to_owned();
+    for entry in std::fs::read_dir(&dcanonical)? {
+        let mut dir: PathBuf = entry?.path().to_owned();
         dir.push(target_file);
-        if dir.exists() && dir.is_file() {
+        info!(?dir);
+        let filename = unsafe {
+            std::str::from_utf8_unchecked(dir.file_name().expect("Has base  name").as_bytes())
+        };
+        info!(filename);
+        let isequal = filename == target_file;
+        info!(isequal);
+        info!(target_file);
+        if filename == target_file {
+            info!("Filename found?");
             return Ok(dir);
-        } else {
-            continue;
         }
     }
+    debug!("SHOULD EXIST");
     Err(io::Error::new(
         io::ErrorKind::Other,
         "Not able to determine project root",
     ))
 }
 
-pub fn vendor(opts: impl AsRef<Opts>, prjdir: impl AsRef<Path>) -> Result<(), io::Error> {
+pub fn vendor(
+    opts: impl AsRef<Opts>,
+    prjdir: impl AsRef<Path>,
+    vendorname: Option<&str>,
+) -> Result<(), io::Error> {
     let mut prjdir = prjdir.as_ref().to_path_buf();
+    info!(?prjdir);
+    // Hack. This is to use the `current_dir` parameter of `std::process`.
+    let mut manifest_path = prjdir.clone();
+    manifest_path.push("Cargo.toml");
+    info!(?manifest_path);
     let update = &opts.as_ref().update;
     let mut outdir = opts.as_ref().outdir.to_owned();
-    let cargo_config = outdir.join("cargo_config");
+    let fullfilename = vendorname.unwrap_or("vendor");
+    let mut cargo_config = String::new();
+    if fullfilename == "vendor" {
+        cargo_config.push_str("cargo_config");
+    } else {
+        let withprefix = format!("{}_cargo_config", fullfilename);
+        cargo_config.push_str(&withprefix);
+    };
 
     if *update {
         info!("Updating dependencies before vendor");
         let cargo_update = process::Command::new("cargo")
             .arg("update")
             .arg("-vv")
+            .args(["--manifest-path", unsafe {
+                std::str::from_utf8_unchecked(manifest_path.as_os_str().as_bytes())
+            }])
             .current_dir(&prjdir)
             .output()
             .expect("Failed to run cargo update.");
@@ -66,6 +94,9 @@ pub fn vendor(opts: impl AsRef<Opts>, prjdir: impl AsRef<Path>) -> Result<(), io
     let cargo_vendor = process::Command::new("cargo")
         .arg("vendor")
         .arg("-vv")
+        .args(["--manifest-path", unsafe {
+            std::str::from_utf8_unchecked(manifest_path.as_os_str().as_bytes())
+        }])
         .current_dir(&prjdir)
         .output()
         .expect("Failed to run cargo vendor");
@@ -93,17 +124,38 @@ pub fn vendor(opts: impl AsRef<Opts>, prjdir: impl AsRef<Path>) -> Result<(), io
     debug!("Compression is of {}", &compression);
     match compression {
         Compression::Gz => {
-            outdir.push("vendor.tar.gz");
+            let fullfilename_with_ext = format!("{}.tar.gz", fullfilename);
+            outdir.push(&fullfilename_with_ext);
+            if outdir.exists() {
+                warn!(
+                    ?outdir,
+                    "Compressed tarball for vendor exists. Please manually check sources 🔦"
+                );
+            }
             debug!("Compressed to {}", outdir.to_string_lossy());
             compress::targz("vendor", outdir, &prjdir)?
         }
         Compression::Xz => {
-            outdir.push("vendor.tar.xz");
+            let fullfilename_with_ext = format!("{}.tar.xz", fullfilename);
+            outdir.push(&fullfilename_with_ext);
+            if outdir.exists() {
+                warn!(
+                    ?outdir,
+                    "Compressed tarball for vendor exists. Please manually check sources 🔦"
+                );
+            }
             debug!("Compressed to {}", outdir.to_string_lossy());
             compress::tarxz("vendor", outdir, &prjdir)?
         }
         Compression::Zst => {
-            outdir.push("vendor.tar.zst");
+            let fullfilename_with_ext = format!("{}.tar.zst", fullfilename);
+            outdir.push(&fullfilename_with_ext);
+            if outdir.exists() {
+                warn!(
+                    ?outdir,
+                    "Compressed tarball for vendor exists. Please manually check sources 🔦"
+                );
+            }
             debug!("Compressed to {}", outdir.to_string_lossy());
             compress::tarzst("vendor", outdir, &prjdir)?
         }
@@ -145,12 +197,9 @@ impl Error for UnsupportedExtError {}
 
 pub fn get_compression_type(file: &Path) -> Result<Compression, UnsupportedExtError> {
     if file.is_file() {
-        let info = infer::get_from_path(&file).expect("File is known");
+        let info = infer::get_from_path(file).expect("File is known");
         let extension = match file.extension() {
-            Some(ext) => match ext.to_str() {
-                Some(s) => s,
-                None => "unknown extension",
-            },
+            Some(ext) => unsafe { std::str::from_utf8_unchecked(ext.as_bytes()) },
             None => "unknown extension",
         };
         let mimetype = match info {
@@ -158,9 +207,10 @@ pub fn get_compression_type(file: &Path) -> Result<Compression, UnsupportedExtEr
             None => "unknown mime type",
         };
         if !SUPPORTED_MIME_TYPES.contains(&mimetype) {
-            return Err(UnsupportedExtError {
+            error!(?mimetype);
+            Err(UnsupportedExtError {
                 ext: Some(mimetype.to_string()),
-            });
+            })
         } else {
             match mimetype {
                 XZ_MIME => {
@@ -191,39 +241,39 @@ pub fn get_compression_type(file: &Path) -> Result<Compression, UnsupportedExtEr
             }
         }
     } else {
-        error!("This is a directory!");
-        Err(UnsupportedExtError {
+        let err = Err(UnsupportedExtError {
             ext: Some("Directory".to_string()),
-        })
+        });
+        error!(?err);
+        err
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-
-//     #[test]
-//     fn unsupported_extensions() {
-//         let unsupported_exts = vec![
-//             Path::new("/uwu.txt"),
-//             Path::new("muwu.mi"),
-//             Path::new("uwu.zip"),
-//         ];
-//         for someext in unsupported_exts {
-//             assert_eq!(true, get_compression_type(someext).is_err());
-//         }
-//     }
-
-//     #[test]
-//     fn supported_extensions() {
-//         let supported_exts = vec![
-//             Path::new("uwu.tar.xz"),
-//             Path::new("uwu.tar.zst"),
-//             Path::new("uwu.tar.zstd"),
-//             Path::new("uwu.tar.gz"),
-//         ];
-//         for someext in supported_exts {
-//             assert_eq!(true, get_compression_type(someext).is_ok());
-//         }
-//     }
-// }
+pub fn cargotomls(opts: impl AsRef<Opts>, workdir: impl AsRef<Path>) -> Result<(), io::Error> {
+    info!("Vendoring separate crate!");
+    let tomls = opts.as_ref().cargotoml.to_owned();
+    info!(?tomls);
+    for crateprj in tomls.iter() {
+        let mut lrj = workdir.as_ref().to_owned();
+        let exists = lrj.exists();
+        debug!(exists);
+        lrj.push(crateprj);
+        lrj.pop();
+        debug!(?crateprj);
+        let exists = lrj.exists();
+        debug!(?lrj);
+        debug!(exists);
+        let prjdir = get_manifest_file(&lrj)?
+            .parent()
+            .expect("Has parent")
+            .to_owned();
+        debug!(?prjdir);
+        if let Some(has_basename) = lrj.file_name() {
+            let prefix = unsafe { std::str::from_utf8_unchecked(has_basename.as_bytes()) };
+            let vendorfilename = format!("{}-vendor", prefix);
+            vendor(&opts, &lrj, Some(&vendorfilename))?;
+        }
+        info!(?crateprj, "Done vendoring subproject 🚀");
+    }
+    Ok(())
+}
