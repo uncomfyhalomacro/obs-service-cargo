@@ -1,6 +1,5 @@
 pub mod compress;
 pub mod decompress;
-
 use crate::cli::{Compression, Opts};
 use crate::consts::{GZ_EXTS, GZ_MIME, SUPPORTED_MIME_TYPES, XZ_EXTS, XZ_MIME, ZST_EXTS, ZST_MIME};
 
@@ -27,7 +26,7 @@ pub fn get_project_root(srcdir: impl AsRef<Path>) -> Result<PathBuf, io::Error> 
         firstry.pop();
         return Ok(firstry);
     } else {
-        for entry in read_dir(&srcdir.as_ref())? {
+        for entry in read_dir(srcdir.as_ref())? {
             let dir = entry?.path();
             if dir.is_dir() {
                 // If directory, we get its ancestors.
@@ -43,10 +42,8 @@ pub fn get_project_root(srcdir: impl AsRef<Path>) -> Result<PathBuf, io::Error> 
                         return Ok(srcdir.as_ref().into());
                     };
                 }
-            } else {
-                if dir.file_name() == Some(&target_file) {
-                    return Ok(dir.into());
-                }
+            } else if dir.file_name() == Some(&target_file) {
+                return Ok(dir);
             }
         }
     };
@@ -176,14 +173,14 @@ pub fn vendor(
 
 pub fn copy_dir_all(src: &Path, dst: &Path) -> Result<(), io::Error> {
     debug!(?dst);
-    fs::create_dir_all(&dst)?;
+    fs::create_dir_all(dst)?;
     for entry in fs::read_dir(src)? {
         let entry = entry?;
         let ty = entry.file_type()?;
 
         debug!(?ty);
         if ty.is_dir() {
-            copy_dir_all(&entry.path(), &mut dst.join(&entry.file_name()))?;
+            copy_dir_all(&entry.path(), &dst.join(&entry.file_name()))?;
         } else {
             fs::copy(&entry.path(), &mut dst.join(&entry.file_name()))?;
         }

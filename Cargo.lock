@@ -361,7 +361,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "obs-service-cargo-vendor-rs"
+name = "obs-service-cargo"
 version = "0.1.0"
 dependencies = [
  "clap",

@@ -1,3 +1,4 @@
+pub mod audit;
 pub mod cli;
 pub mod consts;
-pub mod utils;
+pub mod vendor;

@@ -1,7 +1,7 @@
 use clap::Parser;
-use obs_service_cargo_vendor_rs::cli;
-use obs_service_cargo_vendor_rs::consts::{PREFIX, VENDOR_EXAMPLE};
-use obs_service_cargo_vendor_rs::utils;
+use obs_service_cargo::cli;
+use obs_service_cargo::consts::{PREFIX, VENDOR_EXAMPLE};
+use obs_service_cargo::vendor::utils;
 use std::io;
 use std::io::IsTerminal;
 use std::path::PathBuf;
