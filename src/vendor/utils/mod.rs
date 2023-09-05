@@ -6,22 +6,21 @@ use crate::consts::{GZ_EXTS, GZ_MIME, SUPPORTED_MIME_TYPES, XZ_EXTS, XZ_MIME, ZS
 use infer;
 use std::error::Error;
 use std::ffi::OsString;
-use std::fmt;
 use std::fmt::Debug;
+use std::fmt::{self, Display};
 use std::fs::{self, read_dir};
 use std::io;
 use std::os::unix::prelude::OsStrExt;
 use std::path::{Path, PathBuf};
-use std::process;
 
 #[allow(unused_imports)]
-use tracing::{debug, error, info, warn, Level};
+use tracing::{debug, error, info, trace, warn, Level};
 
 pub fn get_project_root(srcdir: impl AsRef<Path>) -> Result<PathBuf, io::Error> {
     let target_file = OsString::from("Cargo.toml");
     let mut firstry: PathBuf = srcdir.as_ref().into();
     firstry.push("Cargo.toml");
-    info!(?firstry, "Guessing...");
+    trace!(?firstry);
     if firstry.exists() {
         firstry.pop();
         return Ok(firstry);
@@ -54,13 +53,63 @@ pub fn get_project_root(srcdir: impl AsRef<Path>) -> Result<PathBuf, io::Error> 
     Ok(srcdir.as_ref().into())
 }
 
+fn cargo_command(
+    subcommand: &str,
+    options: &[&str],
+    curdir: impl AsRef<Path>,
+) -> Result<String, ExecutionError> {
+    let cmd = std::process::Command::new("cargo")
+        .arg(subcommand)
+        .args(options)
+        .current_dir(curdir.as_ref())
+        .output()
+        .expect("Successfully ran cargo update");
+    trace!(?cmd);
+    let stdoutput = unsafe { String::from_utf8_unchecked(cmd.stdout) };
+    if !cmd.status.success() {
+        return Err(ExecutionError {
+            command: format!("cargo {}", subcommand),
+            exit_code: cmd.status.code(),
+        });
+    };
+    Ok(stdoutput)
+}
+
+pub struct ExecutionError {
+    pub command: String,
+    pub exit_code: Option<i32>,
+}
+
+impl Debug for ExecutionError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let msg = format!(
+            "ExecutionError {{ command: `{}`, exit_code: `{}` }}",
+            self.command,
+            self.exit_code.unwrap()
+        );
+
+        write!(f, "{}", msg)
+    }
+}
+
+impl Display for ExecutionError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let msg = format!(
+            "Failed to run command `{}`. Has exit code `{}`",
+            self.command,
+            self.exit_code.unwrap()
+        );
+
+        write!(f, "{}", msg)
+    }
+}
 pub fn vendor(
     opts: impl AsRef<Opts>,
     prjdir: impl AsRef<Path>,
     vendorname: Option<&str>,
 ) -> Result<(), io::Error> {
     let mut prjdir = prjdir.as_ref().to_path_buf();
-    info!(?prjdir);
+    debug!(?prjdir);
     // Hack. This is to use the `current_dir` parameter of `std::process`.
     let mut manifest_path = prjdir.clone();
     manifest_path.push("Cargo.toml");
@@ -78,57 +127,43 @@ pub fn vendor(
 
     if *update {
         info!("Updating dependencies before vendor");
-        let cargo_update = process::Command::new("cargo")
-            .arg("update")
-            .arg("-vv")
-            .args(["--manifest-path", unsafe {
-                std::str::from_utf8_unchecked(manifest_path.as_os_str().as_bytes())
-            }])
-            .current_dir(&prjdir)
-            .output()
-            .expect("Failed to run cargo update.");
-        if !cargo_update.status.success() {
-            error!("Failed to run cargo update:\n{}", unsafe {
-                String::from_utf8_unchecked(cargo_update.stderr)
-            });
-        } else {
-            info!("Successfully ran cargo update ❤️");
-        }
+        let mut update_options: Vec<&str> = vec!["-vv", "--manifest-path"];
+        let update_manifest_path =
+            unsafe { std::str::from_utf8_unchecked(manifest_path.as_os_str().as_bytes()) };
+        update_options.push(update_manifest_path);
+        cargo_command("update", &update_options, &prjdir).expect("Succesfully ran command");
+        info!("Successfully ran cargo update ❤️:");
     } else {
         warn!("Disabled update of dependencies. You may reenable it for security updates.");
     };
 
-    let cargo_vendor = process::Command::new("cargo")
-        .arg("vendor")
-        .arg("-vv")
-        .args(["--manifest-path", unsafe {
-            std::str::from_utf8_unchecked(manifest_path.as_os_str().as_bytes())
-        }])
-        .current_dir(&prjdir)
-        .output()
-        .expect("Failed to run cargo vendor");
-
-    if !cargo_vendor.status.success() {
-        error!("Failed to run cargo vendor:\n{}", unsafe {
-            std::str::from_utf8_unchecked(&cargo_vendor.stderr)
-        });
-    } else {
-        info!(
-            "Generated cargo config from vendor with content:
-
-```
-{}
-```
-",
-            unsafe { std::str::from_utf8_unchecked(&cargo_vendor.stdout) }
-        );
-        fs::write(cargo_config, cargo_vendor.stdout)?;
-    };
+    let mut vendor_options: Vec<&str> = vec!["-vv", "--manifest-path"];
+    let vendor_manifest_path =
+        unsafe { std::str::from_utf8_unchecked(manifest_path.as_os_str().as_bytes()) };
+    vendor_options.push(vendor_manifest_path);
+    let cargo_vendor_output =
+        cargo_command("vendor", &vendor_options, &prjdir).expect("Successfully ran command");
+    let cargo_config_outdir = outdir.join(&cargo_config);
+    fs::write(cargo_config_outdir, cargo_vendor_output)?;
 
     info!("Proceeding to create compressed archive of vendored deps...");
     prjdir.push("vendor/");
     let compression: &Compression = &opts.as_ref().compression;
     debug!("Compression is of {}", &compression);
+
+    // RATIONALE: We copy Cargo.lock by default, updated or not updated
+    // `../` relative to `vendor/` directory.
+    // CONSIDERATIONS:
+    // Maybe in the future we can check if Cargo.toml points to a workspace
+    // using the `toml` crate. For now, we aggressively just copy `../Cargo.lock`
+    // relative to vendor directory if it exists. Even if it is a workspace,
+    // it will still copy the project's `Cargo.lock` because we still run
+    // `vendor` anyway starting at the root of the project where the lockfile resides.
+    // NOTE: 1. The members in that workspace still requires that root lockfile.
+    // NOTE: 2. Members of that workspace cannot generate their own lockfiles.
+    // NOTE: 3. If they are not members, we slap that file into their own compressed vendored
+    //          tarball
+    let cargolock: Vec<&str> = vec!["../Cargo.lock"];
     match compression {
         Compression::Gz => {
             let fullfilename_with_ext = format!("{}.tar.gz", fullfilename);
@@ -140,7 +175,7 @@ pub fn vendor(
                 );
             }
             debug!("Compressed to {}", outdir.to_string_lossy());
-            compress::targz("vendor", outdir, &prjdir)?
+            compress::targz("vendor", outdir, &prjdir, &cargolock)?
         }
         Compression::Xz => {
             let fullfilename_with_ext = format!("{}.tar.xz", fullfilename);
@@ -152,7 +187,7 @@ pub fn vendor(
                 );
             }
             debug!("Compressed to {}", outdir.to_string_lossy());
-            compress::tarxz("vendor", outdir, &prjdir)?
+            compress::tarxz("vendor", outdir, &prjdir, &cargolock)?
         }
         Compression::Zst => {
             let fullfilename_with_ext = format!("{}.tar.zst", fullfilename);
@@ -164,26 +199,44 @@ pub fn vendor(
                 );
             }
             debug!("Compressed to {}", outdir.to_string_lossy());
-            compress::tarzst("vendor", outdir, &prjdir)?
+            compress::tarzst("vendor", outdir, &prjdir, &cargolock)?
         }
     };
     info!("Finished creating {} compressed tarball", compression);
     Ok(())
 }
 
-pub fn copy_dir_all(src: &Path, dst: &Path) -> Result<(), io::Error> {
+pub fn copy_dir_all(src: impl AsRef<Path>, dst: &Path) -> Result<(), io::Error> {
+    debug!("Copying sources");
     debug!(?dst);
     fs::create_dir_all(dst)?;
     for entry in fs::read_dir(src)? {
         let entry = entry?;
         let ty = entry.file_type()?;
-
-        debug!(?ty);
+        trace!(?entry);
+        trace!(?ty);
         if ty.is_dir() {
+            trace!("Is directory?");
             copy_dir_all(&entry.path(), &dst.join(&entry.file_name()))?;
-        } else {
+
+        // Should we respect symlinks?
+        // } else if ty.is_symlink() {
+        //     debug!("Is symlink");
+        //     let path = fs::read_link(&entry.path())?;
+        //     let path = fs::canonicalize(&path).unwrap();
+        //     debug!(?path);
+        //     let pathfilename = path.file_name().unwrap_or(OsStr::new("."));
+        //     if path.is_dir() {
+        //         copy_dir_all(&path, &dst.join(pathfilename))?;
+        //     } else {
+        //         fs::copy(&path, &mut dst.join(pathfilename))?;
+        //     }
+
+        // Be pedantic or you get symlink error
+        } else if ty.is_file() {
+            trace!("Is file?");
             fs::copy(&entry.path(), &mut dst.join(&entry.file_name()))?;
-        }
+        };
     }
     Ok(())
 }
@@ -259,6 +312,22 @@ pub fn get_compression_type(file: &Path) -> Result<Compression, UnsupportedExtEr
     }
 }
 
+pub fn is_workspace(src: &Path) -> Result<bool, io::Error> {
+    if let Ok(manifest) = fs::read_to_string(src) {
+        if let Ok(manifest_data) = toml::from_str::<toml::Value>(&manifest) {
+            if manifest_data.get("workspace").is_some() {
+                return Ok(true);
+            } else {
+                return Ok(false);
+            };
+        };
+    }
+    return Err(io::Error::new(
+        io::ErrorKind::NotFound,
+        src.to_string_lossy(),
+    ));
+}
+
 pub fn cargotomls(opts: impl AsRef<Opts>, workdir: impl AsRef<Path>) -> Result<(), io::Error> {
     info!("Vendoring separate crate!");
     let tomls = opts.as_ref().cargotoml.to_owned();
@@ -269,15 +338,26 @@ pub fn cargotomls(opts: impl AsRef<Opts>, workdir: impl AsRef<Path>) -> Result<(
         // We already know that the parent is the project name e.g. `crate/Cargo.toml` -> `crate`.
         if let Some(prjname) = crateprj.parent() {
             lsrcdir.push(prjname);
+            trace!(?lsrcdir);
             if lsrcdir.exists() {
                 info!(?lsrcdir, "Found subcrate!");
+                if let Ok(isworkspace) = is_workspace(&lsrcdir) {
+                    if isworkspace {
+                        info!("Subcrate uses workspace! 👀");
+                    } else {
+                        info!("Subcrate is not a workspace. Please check manually! 🫂");
+                    };
+                };
                 let prefix = match prjname.to_str() {
-                    Some(s) => format!("{}.vendor", s),
+                    Some(s) => format!("{}_vendor", s),
                     None => "".to_string(),
                 };
                 vendor(&opts, &lsrcdir, Some(&prefix))?
             } else {
-                warn!(?lsrcdir, "Directory path does not exist! 🚨");
+                warn!(
+                    ?lsrcdir,
+                    "Directory path does not exist! Cannot vendor subcrate 🚨"
+                );
             };
         };
     }
