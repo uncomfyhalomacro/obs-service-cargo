@@ -1,4 +1,8 @@
-use crate::utils::{self, decompress, get_compression_type, UnsupportedExtError};
+use crate::vendor::utils;
+use crate::vendor::utils::decompress;
+use crate::vendor::utils::get_compression_type;
+use crate::vendor::utils::UnsupportedExtError;
+
 use clap::{Args, Parser, ValueEnum};
 use std::fmt::{self, Display};
 use std::io;
@@ -139,3 +143,6 @@ impl Display for Compression {
         write!(f, "{}", msg)
     }
 }
+
+// cargo audit stuff starts here
+use crate::audit;
