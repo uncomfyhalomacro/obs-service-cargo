@@ -1,7 +1,10 @@
 [package]
 name = "obs-service-cargo"
 description = "OBS Source Service to vendor and audit all crates.io and dependencies for Rust project locally. Executable rewritten in Rust."
-authors = ["Soc Virnyl Estela <socvirnyl.estela@gmail.com>"]
+authors = [
+  "William Brown <william@blackhats.net.au>", 
+  "Soc Virnyl Estela <socvirnyl.estela@gmail.com>",
+]
 version = "0.1.0"
 edition = "2021"
 
