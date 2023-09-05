@@ -4,6 +4,7 @@ use obs_service_cargo_vendor_rs::consts::{PREFIX, VENDOR_EXAMPLE};
 use obs_service_cargo_vendor_rs::utils;
 use std::io;
 use std::io::IsTerminal;
+use std::path::PathBuf;
 use terminfo::{capability as cap, Database};
 use tracing_subscriber::EnvFilter;
 
@@ -49,7 +50,7 @@ fn main() -> Result<(), io::Error> {
         .rand_bytes(8)
         .tempdir()
         .expect("Failed to create temporary working directory.");
-    let workdir = tmpdir.path();
+    let mut workdir: PathBuf = tmpdir.path().into();
     debug!("Created temporary working directory: {:?}", workdir);
 
     // One is required over the other and there can't be both anyway.
@@ -62,12 +63,23 @@ fn main() -> Result<(), io::Error> {
             None => unreachable!(),
         };
         info!("Confirmed sources is a directory: {:?}", src.srcdir);
-        utils::copy_dir_all(&src.srcdir, workdir)?;
-        let prjdir = utils::get_manifest_file(workdir)?.to_owned();
-        let prjdir = prjdir.parent().expect("Has a parent directory");
+        utils::copy_dir_all(&src.srcdir, &workdir)?;
+        debug!(?workdir);
+        let prjdir = utils::get_project_root(&workdir)?;
         debug!("Guessed project root at {:?}", prjdir);
-        src.vendor(&args, prjdir)?;
-        src.cargotomls(&args, prjdir)?;
+        workdir.push("Cargo.toml");
+        if workdir.exists() {
+            src.vendor(&args, &prjdir)?
+        } else {
+            warn!("This project seems to have no manifest file. Not vendoring based on project root. Please check manually");
+        };
+        workdir.pop();
+        if !args.cargotoml.is_empty() {
+            info!("Subcrates to vendor found!");
+            src.cargotomls(&args, &prjdir)?;
+        } else {
+            info!("No subcrates to vendor!");
+        };
     } else if args.srctar.is_some() {
         let src = match &args.srctar {
             Some(val) => val.to_owned(),
@@ -78,12 +90,25 @@ fn main() -> Result<(), io::Error> {
             src.srctar
         );
         if src.srctar.exists() {
-            src.decompress(workdir)?;
-            let prjdir = utils::get_manifest_file(workdir)?.to_owned();
-            let prjdir = prjdir.parent().expect("Has a parent directory");
+            src.decompress(&workdir)?;
+            debug!(?workdir);
+            let prjdir = utils::get_project_root(&workdir)?;
+            // let prjdir = prjdir.parent().expect("Has a parent directory");
             debug!("Guessed project root at {:?}", prjdir);
-            src.vendor(&args, prjdir)?;
-            src.cargotomls(&args, prjdir)?;
+            workdir.push("Cargo.toml");
+            if workdir.exists() {
+                src.vendor(&args, &prjdir)?
+            } else {
+                warn!("This project seems to have no manifest file. Not vendoring based on project root. Please check manually");
+            };
+            workdir.pop();
+            src.vendor(&args, &prjdir)?;
+            if !args.cargotoml.is_empty() {
+                info!("Subcrates to vendor found!");
+                src.cargotomls(&args, &prjdir)?;
+            } else {
+                info!("No subcrates to vendor!");
+            };
         }
     } else {
         unreachable!()

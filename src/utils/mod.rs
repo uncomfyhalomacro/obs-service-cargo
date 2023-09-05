@@ -6,9 +6,10 @@ use crate::consts::{GZ_EXTS, GZ_MIME, SUPPORTED_MIME_TYPES, XZ_EXTS, XZ_MIME, ZS
 
 use infer;
 use std::error::Error;
+use std::ffi::OsString;
 use std::fmt;
 use std::fmt::Debug;
-use std::fs;
+use std::fs::{self, read_dir};
 use std::io;
 use std::os::unix::prelude::OsStrExt;
 use std::path::{Path, PathBuf};
@@ -17,34 +18,43 @@ use std::process;
 #[allow(unused_imports)]
 use tracing::{debug, error, info, warn, Level};
 
-pub fn get_manifest_file(srcdir: impl AsRef<Path>) -> Result<PathBuf, io::Error> {
-    let target_file = "Cargo.toml";
-    let dcanonical = srcdir
-        .as_ref()
-        .canonicalize()
-        .expect("Canonical")
-        .to_owned();
-    for entry in std::fs::read_dir(&dcanonical)? {
-        let mut dir: PathBuf = entry?.path().to_owned();
-        dir.push(target_file);
-        info!(?dir);
-        let filename = unsafe {
-            std::str::from_utf8_unchecked(dir.file_name().expect("Has base  name").as_bytes())
-        };
-        info!(filename);
-        let isequal = filename == target_file;
-        info!(isequal);
-        info!(target_file);
-        if filename == target_file {
-            info!("Filename found?");
-            return Ok(dir);
+pub fn get_project_root(srcdir: impl AsRef<Path>) -> Result<PathBuf, io::Error> {
+    let target_file = OsString::from("Cargo.toml");
+    let mut firstry: PathBuf = srcdir.as_ref().into();
+    firstry.push("Cargo.toml");
+    info!(?firstry, "Guessing...");
+    if firstry.exists() {
+        firstry.pop();
+        return Ok(firstry);
+    } else {
+        for entry in read_dir(&srcdir.as_ref())? {
+            let dir = entry?.path();
+            if dir.is_dir() {
+                // If directory, we get its ancestors.
+                // We just copy the logic of "first try".
+                let ancest = dir.ancestors();
+                for anc in ancest {
+                    debug!(?anc);
+                    if anc.join("Cargo.toml").exists() {
+                        return Ok(anc.into());
+                    } else if anc == srcdir.as_ref() {
+                        // We don't want going deeper you know...
+                        // Logic is quite related to the last `Ok`.
+                        return Ok(srcdir.as_ref().into());
+                    };
+                }
+            } else {
+                if dir.file_name() == Some(&target_file) {
+                    return Ok(dir.into());
+                }
+            }
         }
-    }
-    debug!("SHOULD EXIST");
-    Err(io::Error::new(
-        io::ErrorKind::Other,
-        "Not able to determine project root",
-    ))
+    };
+
+    // NOTE: Instead of failing, we will return the workdir.
+    // This is intended for projects such as https://github.com/ibm-s390-linux/s390-tools
+    // The REAL QUESTION is, is this the correct way to do it?
+    Ok(srcdir.as_ref().into())
 }
 
 pub fn vendor(
@@ -164,15 +174,18 @@ pub fn vendor(
     Ok(())
 }
 
-pub fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> Result<(), io::Error> {
+pub fn copy_dir_all(src: &Path, dst: &Path) -> Result<(), io::Error> {
+    debug!(?dst);
     fs::create_dir_all(&dst)?;
     for entry in fs::read_dir(src)? {
         let entry = entry?;
         let ty = entry.file_type()?;
+
+        debug!(?ty);
         if ty.is_dir() {
-            copy_dir_all(entry.path(), dst.as_ref().join(entry.file_name()))?;
+            copy_dir_all(&entry.path(), &mut dst.join(&entry.file_name()))?;
         } else {
-            fs::copy(entry.path(), dst.as_ref().join(entry.file_name()))?;
+            fs::copy(&entry.path(), &mut dst.join(&entry.file_name()))?;
         }
     }
     Ok(())
@@ -253,27 +266,23 @@ pub fn cargotomls(opts: impl AsRef<Opts>, workdir: impl AsRef<Path>) -> Result<(
     info!("Vendoring separate crate!");
     let tomls = opts.as_ref().cargotoml.to_owned();
     info!(?tomls);
+
     for crateprj in tomls.iter() {
-        let mut lrj = workdir.as_ref().to_owned();
-        let exists = lrj.exists();
-        debug!(exists);
-        lrj.push(crateprj);
-        lrj.pop();
-        debug!(?crateprj);
-        let exists = lrj.exists();
-        debug!(?lrj);
-        debug!(exists);
-        let prjdir = get_manifest_file(&lrj)?
-            .parent()
-            .expect("Has parent")
-            .to_owned();
-        debug!(?prjdir);
-        if let Some(has_basename) = lrj.file_name() {
-            let prefix = unsafe { std::str::from_utf8_unchecked(has_basename.as_bytes()) };
-            let vendorfilename = format!("{}-vendor", prefix);
-            vendor(&opts, &lrj, Some(&vendorfilename))?;
-        }
-        info!(?crateprj, "Done vendoring subproject 🚀");
+        let mut lsrcdir: PathBuf = workdir.as_ref().to_owned();
+        // We already know that the parent is the project name e.g. `crate/Cargo.toml` -> `crate`.
+        if let Some(prjname) = crateprj.parent() {
+            lsrcdir.push(prjname);
+            if lsrcdir.exists() {
+                info!(?lsrcdir, "Found subcrate!");
+                let prefix = match prjname.to_str() {
+                    Some(s) => format!("{}.vendor", s),
+                    None => "".to_string(),
+                };
+                vendor(&opts, &lsrcdir, Some(&prefix))?
+            } else {
+                warn!(?lsrcdir, "Directory path does not exist! 🚨");
+            };
+        };
     }
     Ok(())
 }
