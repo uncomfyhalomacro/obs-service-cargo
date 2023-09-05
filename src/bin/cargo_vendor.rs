@@ -2,6 +2,7 @@ use clap::Parser;
 use obs_service_cargo::cli;
 use obs_service_cargo::consts::{PREFIX, VENDOR_EXAMPLE};
 use obs_service_cargo::vendor::utils;
+use obs_service_cargo::vendor::utils::is_workspace;
 use std::io;
 use std::io::IsTerminal;
 use std::path::PathBuf;
@@ -9,7 +10,7 @@ use terminfo::{capability as cap, Database};
 use tracing_subscriber::EnvFilter;
 
 #[allow(unused_imports)]
-use tracing::{debug, error, info, warn, Level};
+use tracing::{debug, error, info, trace, warn, Level};
 
 // Create custom error type for processing
 
@@ -57,11 +58,7 @@ fn main() -> Result<(), io::Error> {
     // NOTE: Because our struct `Opt` requires srctar or srcdir but not both, we put
     // some `unreachable!` macros because they cannot be reached after all.
     info!("Checking sources before vendor 🥡");
-    if args.srcdir.is_some() {
-        let src = match &args.srcdir {
-            Some(val) => val,
-            None => unreachable!(),
-        };
+    if let Some(src) = &args.srcdir {
         info!("Confirmed sources is a directory: {:?}", src.srcdir);
         utils::copy_dir_all(&src.srcdir, &workdir)?;
         debug!(?workdir);
@@ -69,6 +66,13 @@ fn main() -> Result<(), io::Error> {
         debug!("Guessed project root at {:?}", prjdir);
         workdir.push("Cargo.toml");
         if workdir.exists() {
+            if let Ok(isworkspace) = is_workspace(&workdir) {
+                if isworkspace {
+                    info!("Project uses workspace! 👀");
+                } else {
+                    info!("Project not a workspace. Please check manually! 🫂");
+                };
+            };
             src.vendor(&args, &prjdir)?
         } else {
             warn!("This project seems to have no manifest file. Not vendoring based on project root. Please check manually");
@@ -80,11 +84,8 @@ fn main() -> Result<(), io::Error> {
         } else {
             info!("No subcrates to vendor!");
         };
-    } else if args.srctar.is_some() {
-        let src = match &args.srctar {
-            Some(val) => val.to_owned(),
-            None => unreachable!(),
-        };
+    };
+    if let Some(src) = &args.srctar {
         info!(
             "Confirmed sources is a compressed tarball: {:?}",
             src.srctar
@@ -97,6 +98,13 @@ fn main() -> Result<(), io::Error> {
             debug!("Guessed project root at {:?}", prjdir);
             workdir.push("Cargo.toml");
             if workdir.exists() {
+                if let Ok(isworkspace) = is_workspace(&workdir) {
+                    if isworkspace {
+                        info!("Project uses workspace! 👀");
+                    } else {
+                        info!("Project not a workspace. Please check manually! 🫂");
+                    };
+                };
                 src.vendor(&args, &prjdir)?
             } else {
                 warn!("This project seems to have no manifest file. Not vendoring based on project root. Please check manually");
@@ -110,10 +118,7 @@ fn main() -> Result<(), io::Error> {
                 info!("No subcrates to vendor!");
             };
         }
-    } else {
-        unreachable!()
     };
-
     info!("Vendor operation success! ❤️");
     info!("\n{}", VENDOR_EXAMPLE);
 
