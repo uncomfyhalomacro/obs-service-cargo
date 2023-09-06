@@ -90,16 +90,22 @@ fn main() -> Result<(), io::Error> {
                 if pathtomanifest.exists() {
                     if let Ok(isworkspace) = utils::is_workspace(&pathtomanifest) {
                         if isworkspace {
-                            info!("Subcrate uses workspace! 👀");
+                            info!("Project uses workspace! 👀");
+                            if utils::has_dependencies(&pathtomanifest).unwrap_or(false) {
+                                info!("Workspace has global dependencies!");
+                            } else {
+                                info!("No global dependencies! May vendor dependencies of member crates");
+                            };
                         } else {
-                            info!("Subcrate is not a workspace. Please check manually! 🫂");
+                            info!("Project is not a workspace. Please check manually! 🫂");
+                            if utils::has_dependencies(&pathtomanifest).unwrap_or(false) {
+                                info!("Project has dependencies!");
+                            } else {
+                                info!("No deps, no need to vendor!");
+                            };
                         };
                     };
-                    if utils::has_dependencies(&pathtomanifest).unwrap_or(false) {
-                        info!("Project has dependencies!");
-                    } else {
-                        info!("No deps, no need to vendor!");
-                    };
+
                     src.vendor(&args, &prjdir)?;
                     if !args.cargotoml.is_empty() {
                         info!("Subcrates to vendor found!");
@@ -134,16 +140,22 @@ fn main() -> Result<(), io::Error> {
                     if pathtomanifest.exists() {
                         if let Ok(isworkspace) = utils::is_workspace(&pathtomanifest) {
                             if isworkspace {
-                                info!("Subcrate uses workspace! 👀");
+                                info!("Project uses workspace! 👀");
+                                if utils::has_dependencies(&pathtomanifest).unwrap_or(false) {
+                                    info!("Workspace has global dependencies!");
+                                } else {
+                                    info!("No global dependencies! May vendor dependencies of member crates");
+                                };
                             } else {
-                                info!("Subcrate is not a workspace. Please check manually! 🫂");
+                                info!("Project is not a workspace. Please check manually! 🫂");
+                                if utils::has_dependencies(&pathtomanifest).unwrap_or(false) {
+                                    info!("Project has dependencies!");
+                                } else {
+                                    info!("No deps, no need to vendor!");
+                                };
                             };
                         };
-                        if utils::has_dependencies(&pathtomanifest).unwrap_or(false) {
-                            info!("Project has dependencies!");
-                        } else {
-                            info!("No deps, no need to vendor!");
-                        };
+
                         src.vendor(&args, &prjdir)?;
                         if !args.cargotoml.is_empty() {
                             info!("Subcrates to vendor found!");

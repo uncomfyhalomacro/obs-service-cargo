@@ -17,8 +17,8 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 // 02110-1301, USA.
 
-use std::fs;
 use std::ffi::OsStr;
+use std::fs;
 use std::io;
 use std::path::Path;
 use tar;
