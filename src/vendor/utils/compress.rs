@@ -43,7 +43,7 @@ where
             info!(?pathto);
             let exists = pathto.exists();
             if exists {
-                debug!(?pathto, "Path to file or directory exists!");
+                warn!(?pathto, "Path to file or directory exists!");
                 if pathto.is_file() {
                     debug!(?pathto, "Path to is file!");
                     let basedir = pathto.file_name().unwrap_or(OsStr::new(f));
@@ -54,7 +54,7 @@ where
                     builder.append_dir_all("", pathto)?;
                     debug!("Added {} to archive", f);
                 } else {
-                    warn!("Is this the correct path to file? 🤔");
+                    warn!(?pathto, "Is this the correct path to file? 🤔");
                 };
             };
         }
