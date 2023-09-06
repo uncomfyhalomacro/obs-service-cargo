@@ -70,11 +70,11 @@ fn main() -> Result<(), io::Error> {
                     info!("Project not a workspace. Please check manually! 🫂");
                 };
             };
-            prjdir.pop();
-            src.vendor(&args, &prjdir)?
         } else {
             warn!("This project seems to have no manifest file. Not vendoring based on project root. Please check manually");
         };
+        prjdir.pop();
+        src.vendor(&args, &prjdir)?;
         if !args.cargotoml.is_empty() {
             info!("Subcrates to vendor found!");
             src.cargotomls(&args, &prjdir)?;
@@ -102,11 +102,10 @@ fn main() -> Result<(), io::Error> {
                         info!("Project not a workspace. Please check manually! 🫂");
                     };
                 };
-                prjdir.pop();
-                src.vendor(&args, &prjdir)?
             } else {
                 warn!("This project seems to have no manifest file. Not vendoring based on project root. Please check manually");
             };
+            prjdir.pop();
             src.vendor(&args, &prjdir)?;
             if !args.cargotoml.is_empty() {
                 info!("Subcrates to vendor found!");
