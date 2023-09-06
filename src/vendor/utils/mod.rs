@@ -101,7 +101,7 @@ fn cargo_command(
         .output()
         .expect("Successfully ran cargo update");
     trace!(?cmd);
-    let stdoutput = unsafe { String::from_utf8_unchecked(cmd.stdout) };
+    let stdoutput = String::from_utf8_lossy(&cmd.stdout).to_string();
     if !cmd.status.success() {
         return Err(ExecutionError {
             command: format!("cargo {}", subcommand),
@@ -259,7 +259,7 @@ pub fn copy_dir_all(src: impl AsRef<Path>, dst: &Path) -> Result<(), io::Error> 
         trace!(?entry);
         trace!(?ty);
         if ty.is_dir() {
-            trace!("Is directory?");
+            trace!(?ty, "Is directory?");
             copy_dir_all(&entry.path(), &dst.join(&entry.file_name()))?;
 
         // Should we respect symlinks?
@@ -277,7 +277,7 @@ pub fn copy_dir_all(src: impl AsRef<Path>, dst: &Path) -> Result<(), io::Error> 
 
         // Be pedantic or you get symlink error
         } else if ty.is_file() {
-            trace!("Is file?");
+            trace!(?ty, "Is file?");
             fs::copy(&entry.path(), &mut dst.join(&entry.file_name()))?;
         };
     }
@@ -321,7 +321,7 @@ pub fn get_compression_type(file: &Path) -> Result<Compression, UnsupportedExtEr
             match mimetype {
                 XZ_MIME => {
                     if XZ_EXTS.contains(&extension) {
-                        info!("File has the correct supported extension {}", extension);
+                        warn!("File has the correct supported extension {}", extension);
                     } else {
                         warn!("File has an incorrect extension: {}. Make sure it's the right compression AND extension to avoid confusion", extension);
                     };
@@ -329,7 +329,7 @@ pub fn get_compression_type(file: &Path) -> Result<Compression, UnsupportedExtEr
                 }
                 GZ_MIME => {
                     if GZ_EXTS.contains(&extension) {
-                        info!("File has the correct supported extension {}", extension);
+                        warn!("File has the correct supported extension {}", extension);
                     } else {
                         warn!("File has an incorrect extension: {}. Make sure it's the right compression AND extension to avoid confusion", extension);
                     };
@@ -337,7 +337,7 @@ pub fn get_compression_type(file: &Path) -> Result<Compression, UnsupportedExtEr
                 }
                 ZST_MIME => {
                     if ZST_EXTS.contains(&extension) {
-                        info!("File has the correct supported extension {}", extension);
+                        warn!("File has the correct supported extension {}", extension);
                     } else {
                         warn!("File has an incorrect extension: {}. Make sure it's the right compression AND extension to avoid confusion", extension);
                     };
@@ -405,20 +405,21 @@ pub fn cargotomls(opts: impl AsRef<Opts>, workdir: impl AsRef<Path>) -> Result<(
                 info!(?lsrcdir, "Found subcrate!");
                 if let Ok(isworkspace) = is_workspace(&lsrcdir) {
                     if isworkspace {
-                        info!("Subcrate uses workspace! 👀");
+                        info!(?pathtomanifest, "Subcrate uses workspace! 👀");
                         if has_dependencies(&pathtomanifest).unwrap_or(false) {
-                            info!("Project has global dependencies!");
+                            info!(?pathtomanifest, "Project has global dependencies!");
                         } else {
                             info!(
+                                ?pathtomanifest,
                                 "No global dependencies. May vendor dependencies of member crates."
                             );
                         };
                     } else {
-                        info!("Subcrate is not a workspace. Please check manually! 🫂");
+                        info!(?pathtomanifest, "Subcrate is not a workspace. 🫂");
                         if has_dependencies(&pathtomanifest).unwrap_or(false) {
-                            info!("Project has dependencies!");
+                            info!(?pathtomanifest, "Project has dependencies!");
                         } else {
-                            info!("No deps, no need to vendor!");
+                            info!(?pathtomanifest, "No deps, no need to vendor!");
                         };
                     };
                 };
@@ -429,7 +430,7 @@ pub fn cargotomls(opts: impl AsRef<Opts>, workdir: impl AsRef<Path>) -> Result<(
                 };
                 vendor(&opts, &lsrcdir, Some(&prefix))?
             } else {
-                warn!(
+                error!(
                     ?lsrcdir,
                     "Directory path does not exist! Cannot vendor subcrate 🚨"
                 );
