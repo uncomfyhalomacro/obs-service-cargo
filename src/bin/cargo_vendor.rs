@@ -68,7 +68,6 @@ fn main() -> Result<(), io::Error> {
                 debug!("Guessed project root at {:?}", prjdir);
                 // Addressed limitations of get_project_root
                 let pathtomanifest = prjdir.join("Cargo.toml");
-                let has_deps = utils::has_dependencies(&pathtomanifest).unwrap_or(false);
                 if pathtomanifest.exists() {
                     if let Ok(isworkspace) = utils::is_workspace(&pathtomanifest) {
                         if isworkspace {
@@ -77,12 +76,12 @@ fn main() -> Result<(), io::Error> {
                             info!("Subcrate is not a workspace. Please check manually! 🫂");
                         };
                     };
-                    if has_deps {
+                    if utils::has_dependencies(&pathtomanifest).unwrap_or(false) {
                         info!("Project has dependencies!");
-                        src.vendor(&args, &prjdir)?;
                     } else {
                         info!("No deps, no need to vendor!");
-                    }
+                    };
+                    src.vendor(&args, &prjdir)?;
                     if !args.cargotoml.is_empty() {
                         info!("Subcrates to vendor found!");
                         src.cargotomls(&args, &prjdir)?;
@@ -113,7 +112,6 @@ fn main() -> Result<(), io::Error> {
                     debug!("Guessed project root at {:?}", prjdir);
                     // Addressed limitations of get_project_root
                     let pathtomanifest = prjdir.join("Cargo.toml");
-                    let has_deps = utils::has_dependencies(&pathtomanifest).unwrap_or(false);
                     if pathtomanifest.exists() {
                         if let Ok(isworkspace) = utils::is_workspace(&pathtomanifest) {
                             if isworkspace {
@@ -122,12 +120,12 @@ fn main() -> Result<(), io::Error> {
                                 info!("Subcrate is not a workspace. Please check manually! 🫂");
                             };
                         };
-                        if has_deps {
+                        if utils::has_dependencies(&pathtomanifest).unwrap_or(false) {
                             info!("Project has dependencies!");
-                            src.vendor(&args, &prjdir)?;
                         } else {
                             info!("No deps, no need to vendor!");
-                        }
+                        };
+                        src.vendor(&args, &prjdir)?;
                         if !args.cargotoml.is_empty() {
                             info!("Subcrates to vendor found!");
                             src.cargotomls(&args, &prjdir)?;
