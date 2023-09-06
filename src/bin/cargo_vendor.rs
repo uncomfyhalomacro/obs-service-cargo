@@ -57,16 +57,47 @@ fn main() -> Result<(), io::Error> {
     info!("Checking sources before vendor 🥡");
     if let Some(src) = &args.srcdir {
         info!("Confirmed sources is a directory: {:?}", src.srcdir);
-        utils::copy_dir_all(&src.srcdir, &workdir)?;
+        let basename = &src.srcdir.file_name().unwrap_or(src.srcdir.as_os_str());
+        let newworkdir = &workdir.join(basename);
+        debug!(?newworkdir);
+        utils::copy_dir_all(&src.srcdir, newworkdir)?;
         debug!(?workdir);
-        let prjdir = utils::get_project_root(&workdir)?;
-        debug!("Guessed project root at {:?}", prjdir);
-        src.vendor(&args, &prjdir)?;
-        if !args.cargotoml.is_empty() {
-            info!("Subcrates to vendor found!");
-            src.cargotomls(&args, &prjdir)?;
-        } else {
-            info!("No subcrates to vendor!");
+        // You will still use workdir just in case ;) so its behavior is the same as srctar
+        match utils::get_project_root(&workdir) {
+            Ok(prjdir) => {
+                debug!("Guessed project root at {:?}", prjdir);
+                // Addressed limitations of get_project_root
+                let pathtomanifest = prjdir.join("Cargo.toml");
+                let has_deps = utils::has_dependencies(&pathtomanifest).unwrap_or(false);
+                if pathtomanifest.exists() {
+                    if let Ok(isworkspace) = utils::is_workspace(&pathtomanifest) {
+                        if isworkspace {
+                            info!("Subcrate uses workspace! 👀");
+                        } else {
+                            info!("Subcrate is not a workspace. Please check manually! 🫂");
+                        };
+                    };
+                    if has_deps {
+                        info!("Project has dependencies!");
+                        src.vendor(&args, &prjdir)?;
+                    } else {
+                        info!("No deps, no need to vendor!");
+                    }
+                    if !args.cargotoml.is_empty() {
+                        info!("Subcrates to vendor found!");
+                        src.cargotomls(&args, &prjdir)?;
+                    } else {
+                        info!("No subcrates to vendor!");
+                    };
+                } else {
+                    warn!("This is not a rust project");
+                    warn!("Use the start of the root of the project to your subcrate instead!");
+                    // fallback to workdir
+                    src.cargotomls(&args, workdir)?;
+                }
+                return Ok(());
+            }
+            Err(err) => return Err(err),
         };
     };
     if let Some(src) = &args.srctar {
@@ -77,15 +108,40 @@ fn main() -> Result<(), io::Error> {
         if src.srctar.exists() {
             src.decompress(&workdir)?;
             debug!(?workdir);
-            let prjdir = utils::get_project_root(&workdir)?;
-            // let prjdir = prjdir.parent().expect("Has a parent directory");
-            debug!("Guessed project root at {:?}", prjdir);
-            src.vendor(&args, &prjdir)?;
-            if !args.cargotoml.is_empty() {
-                info!("Subcrates to vendor found!");
-                src.cargotomls(&args, &prjdir)?;
-            } else {
-                info!("No subcrates to vendor!");
+            match utils::get_project_root(&workdir) {
+                Ok(prjdir) => {
+                    debug!("Guessed project root at {:?}", prjdir);
+                    // Addressed limitations of get_project_root
+                    let pathtomanifest = prjdir.join("Cargo.toml");
+                    let has_deps = utils::has_dependencies(&pathtomanifest).unwrap_or(false);
+                    if pathtomanifest.exists() {
+                        if let Ok(isworkspace) = utils::is_workspace(&pathtomanifest) {
+                            if isworkspace {
+                                info!("Subcrate uses workspace! 👀");
+                            } else {
+                                info!("Subcrate is not a workspace. Please check manually! 🫂");
+                            };
+                        };
+                        if has_deps {
+                            info!("Project has dependencies!");
+                            src.vendor(&args, &prjdir)?;
+                        } else {
+                            info!("No deps, no need to vendor!");
+                        }
+                        if !args.cargotoml.is_empty() {
+                            info!("Subcrates to vendor found!");
+                            src.cargotomls(&args, &prjdir)?;
+                        } else {
+                            info!("No subcrates to vendor!");
+                        };
+                    } else {
+                        warn!("This is not a rust project");
+                        warn!("Use the start of the root of the project to your subcrate instead!");
+                        src.cargotomls(&args, &workdir)?;
+                    }
+                    return Ok(());
+                }
+                Err(err) => return Err(err),
             };
         }
     };
