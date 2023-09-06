@@ -2,7 +2,7 @@ use clap::Parser;
 use obs_service_cargo::cli;
 use obs_service_cargo::consts::{PREFIX, VENDOR_EXAMPLE};
 use obs_service_cargo::vendor::utils;
-use obs_service_cargo::vendor::utils::is_workspace;
+
 use std::io;
 use std::io::IsTerminal;
 use std::path::PathBuf;
@@ -59,21 +59,8 @@ fn main() -> Result<(), io::Error> {
         info!("Confirmed sources is a directory: {:?}", src.srcdir);
         utils::copy_dir_all(&src.srcdir, &workdir)?;
         debug!(?workdir);
-        let mut prjdir = utils::get_project_root(&workdir)?;
+        let prjdir = utils::get_project_root(&workdir)?;
         debug!("Guessed project root at {:?}", prjdir);
-        prjdir.push("Cargo.toml");
-        if prjdir.exists() {
-            if let Ok(isworkspace) = is_workspace(&prjdir) {
-                if isworkspace {
-                    info!("Project uses workspace! 👀");
-                } else {
-                    info!("Project not a workspace. Please check manually! 🫂");
-                };
-            };
-        } else {
-            warn!("This project seems to have no manifest file. Not vendoring based on project root. Please check manually");
-        };
-        prjdir.pop();
         src.vendor(&args, &prjdir)?;
         if !args.cargotoml.is_empty() {
             info!("Subcrates to vendor found!");
@@ -90,22 +77,9 @@ fn main() -> Result<(), io::Error> {
         if src.srctar.exists() {
             src.decompress(&workdir)?;
             debug!(?workdir);
-            let mut prjdir = utils::get_project_root(&workdir)?;
+            let prjdir = utils::get_project_root(&workdir)?;
             // let prjdir = prjdir.parent().expect("Has a parent directory");
             debug!("Guessed project root at {:?}", prjdir);
-            prjdir.push("Cargo.toml");
-            if prjdir.exists() {
-                if let Ok(isworkspace) = is_workspace(&prjdir) {
-                    if isworkspace {
-                        info!("Project uses workspace! 👀");
-                    } else {
-                        info!("Project not a workspace. Please check manually! 🫂");
-                    };
-                };
-            } else {
-                warn!("This project seems to have no manifest file. Not vendoring based on project root. Please check manually");
-            };
-            prjdir.pop();
             src.vendor(&args, &prjdir)?;
             if !args.cargotoml.is_empty() {
                 info!("Subcrates to vendor found!");
