@@ -22,6 +22,13 @@ pub fn get_project_root(srcdir: impl AsRef<Path>) -> Result<PathBuf, io::Error> 
     firstry.push("Cargo.toml");
     trace!(?firstry);
     if firstry.exists() {
+        if let Ok(isworkspace) = is_workspace(&firstry) {
+            if isworkspace {
+                info!("Project uses workspace! 👀");
+            } else {
+                info!("Project not a workspace. Please check manually! 🫂");
+            };
+        };
         firstry.pop();
         return Ok(firstry);
     } else {
@@ -34,11 +41,18 @@ pub fn get_project_root(srcdir: impl AsRef<Path>) -> Result<PathBuf, io::Error> 
                 for anc in ancest {
                     debug!(?anc);
                     if anc.join("Cargo.toml").exists() {
+                        if let Ok(isworkspace) = is_workspace(anc) {
+                            if isworkspace {
+                                info!("Project uses workspace! 👀");
+                            } else {
+                                info!("Project not a workspace. Please check manually! 🫂");
+                            };
+                        };
                         return Ok(anc.into());
                     } else if anc == srcdir.as_ref() {
                         // We don't want going deeper you know...
                         // Logic is quite related to the last `Ok`.
-                        return Ok(srcdir.as_ref().into());
+                        break;
                     };
                 }
             } else if dir.file_name() == Some(&target_file) {
@@ -46,6 +60,7 @@ pub fn get_project_root(srcdir: impl AsRef<Path>) -> Result<PathBuf, io::Error> 
             }
         }
     };
+    warn!("This project seems to have no manifest file. Not vendoring based on project root. Please check manually");
 
     // NOTE: Instead of failing, we will return the workdir.
     // This is intended for projects such as https://github.com/ibm-s390-linux/s390-tools
