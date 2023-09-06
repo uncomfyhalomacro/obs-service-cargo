@@ -406,15 +406,23 @@ pub fn cargotomls(opts: impl AsRef<Opts>, workdir: impl AsRef<Path>) -> Result<(
                 if let Ok(isworkspace) = is_workspace(&lsrcdir) {
                     if isworkspace {
                         info!("Subcrate uses workspace! 👀");
+                        if has_dependencies(&pathtomanifest).unwrap_or(false) {
+                            info!("Project has global dependencies!");
+                        } else {
+                            info!(
+                                "No global dependencies. May vendor dependencies of member crates."
+                            );
+                        };
                     } else {
                         info!("Subcrate is not a workspace. Please check manually! 🫂");
+                        if has_dependencies(&pathtomanifest).unwrap_or(false) {
+                            info!("Project has dependencies!");
+                        } else {
+                            info!("No deps, no need to vendor!");
+                        };
                     };
                 };
-                if has_dependencies(&pathtomanifest).unwrap_or(false) {
-                    info!("Project has dependencies!");
-                } else {
-                    info!("No deps, no need to vendor!");
-                };
+
                 let prefix = match prjname.to_str() {
                     Some(s) => format!("{}_vendor", s),
                     None => "".to_string(),
