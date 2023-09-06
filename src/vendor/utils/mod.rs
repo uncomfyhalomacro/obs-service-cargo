@@ -9,7 +9,7 @@ use std::ffi::OsString;
 use std::fmt::Debug;
 use std::fmt::{self, Display};
 use std::fs::{self, read_dir};
-use std::io;
+use std::io::{self, Write};
 use std::os::unix::prelude::OsStrExt;
 use std::path::{Path, PathBuf};
 
@@ -132,13 +132,19 @@ pub fn vendor(
     let update = &opts.as_ref().update;
     let mut outdir = opts.as_ref().outdir.to_owned();
     let fullfilename = vendorname.unwrap_or("vendor");
+    let fullfilename = Path::new(fullfilename)
+        .file_name()
+        .unwrap_or(Path::new(fullfilename).as_os_str());
     let mut cargo_config = String::new();
-    if fullfilename == "vendor" {
+    if fullfilename.to_string_lossy() == "vendor" {
         cargo_config.push_str("cargo_config");
     } else {
-        let withprefix = format!("{}_cargo_config", fullfilename);
+        let withprefix = format!("{}_cargo_config", fullfilename.to_string_lossy());
         cargo_config.push_str(&withprefix);
     };
+    let cargo_config = Path::new(&cargo_config)
+        .file_name()
+        .unwrap_or(Path::new(&cargo_config).as_os_str());
 
     if *update {
         info!("Updating dependencies before vendor");
@@ -147,7 +153,7 @@ pub fn vendor(
             unsafe { std::str::from_utf8_unchecked(manifest_path.as_os_str().as_bytes()) };
         update_options.push(update_manifest_path);
         cargo_command("update", &update_options, &prjdir).expect("Succesfully ran command");
-        info!("Successfully ran cargo update ❤️:");
+        info!("Successfully ran cargo update ❤️");
     } else {
         warn!("Disabled update of dependencies. You may reenable it for security updates.");
     };
@@ -156,11 +162,12 @@ pub fn vendor(
     let vendor_manifest_path =
         unsafe { std::str::from_utf8_unchecked(manifest_path.as_os_str().as_bytes()) };
     vendor_options.push(vendor_manifest_path);
+    debug!(?vendor_options);
     let cargo_vendor_output =
         cargo_command("vendor", &vendor_options, &prjdir).expect("Successfully ran command");
-    let cargo_config_outdir = outdir.join(&cargo_config);
-    fs::write(cargo_config_outdir, cargo_vendor_output)?;
-
+    debug!(?outdir);
+    let mut cargo_config_outdir = fs::File::create(outdir.join(cargo_config))?;
+    cargo_config_outdir.write_all(cargo_vendor_output.as_bytes())?;
     info!("Proceeding to create compressed archive of vendored deps...");
     prjdir.push("vendor/");
     let compression: &Compression = &opts.as_ref().compression;
@@ -181,7 +188,7 @@ pub fn vendor(
     let cargolock: Vec<&str> = vec!["../Cargo.lock"];
     match compression {
         Compression::Gz => {
-            let fullfilename_with_ext = format!("{}.tar.gz", fullfilename);
+            let fullfilename_with_ext = format!("{}.tar.gz", fullfilename.to_string_lossy());
             outdir.push(&fullfilename_with_ext);
             if outdir.exists() {
                 warn!(
@@ -193,7 +200,7 @@ pub fn vendor(
             compress::targz("vendor", outdir, &prjdir, &cargolock)?
         }
         Compression::Xz => {
-            let fullfilename_with_ext = format!("{}.tar.xz", fullfilename);
+            let fullfilename_with_ext = format!("{}.tar.xz", fullfilename.to_string_lossy());
             outdir.push(&fullfilename_with_ext);
             if outdir.exists() {
                 warn!(
@@ -205,7 +212,7 @@ pub fn vendor(
             compress::tarxz("vendor", outdir, &prjdir, &cargolock)?
         }
         Compression::Zst => {
-            let fullfilename_with_ext = format!("{}.tar.zst", fullfilename);
+            let fullfilename_with_ext = format!("{}.tar.zst", fullfilename.to_string_lossy());
             outdir.push(&fullfilename_with_ext);
             if outdir.exists() {
                 warn!(
@@ -343,6 +350,24 @@ pub fn is_workspace(src: &Path) -> Result<bool, io::Error> {
     ));
 }
 
+pub fn has_dependencies(src: &Path) -> Result<bool, io::Error> {
+    if let Ok(manifest) = fs::read_to_string(src) {
+        if let Ok(manifest_data) = toml::from_str::<toml::Value>(&manifest) {
+            if manifest_data.get("dependencies").is_some()
+                || manifest_data.get("dev-dependencies").is_some()
+            {
+                return Ok(true);
+            } else {
+                return Ok(false);
+            };
+        };
+    }
+    return Err(io::Error::new(
+        io::ErrorKind::NotFound,
+        src.to_string_lossy(),
+    ));
+}
+
 pub fn cargotomls(opts: impl AsRef<Opts>, workdir: impl AsRef<Path>) -> Result<(), io::Error> {
     info!("Vendoring separate crate!");
     let tomls = opts.as_ref().cargotoml.to_owned();
@@ -353,8 +378,10 @@ pub fn cargotomls(opts: impl AsRef<Opts>, workdir: impl AsRef<Path>) -> Result<(
         // We already know that the parent is the project name e.g. `crate/Cargo.toml` -> `crate`.
         if let Some(prjname) = crateprj.parent() {
             lsrcdir.push(prjname);
+            let pathtomanifest = lsrcdir.join("Cargo.toml");
+            let has_deps = has_dependencies(&pathtomanifest).unwrap_or(false);
             trace!(?lsrcdir);
-            if lsrcdir.exists() {
+            if pathtomanifest.exists() {
                 info!(?lsrcdir, "Found subcrate!");
                 if let Ok(isworkspace) = is_workspace(&lsrcdir) {
                     if isworkspace {
@@ -363,11 +390,16 @@ pub fn cargotomls(opts: impl AsRef<Opts>, workdir: impl AsRef<Path>) -> Result<(
                         info!("Subcrate is not a workspace. Please check manually! 🫂");
                     };
                 };
-                let prefix = match prjname.to_str() {
-                    Some(s) => format!("{}_vendor", s),
-                    None => "".to_string(),
-                };
-                vendor(&opts, &lsrcdir, Some(&prefix))?
+                if has_deps {
+                    info!("Project has dependencies!");
+                    let prefix = match prjname.to_str() {
+                        Some(s) => format!("{}_vendor", s),
+                        None => "".to_string(),
+                    };
+                    vendor(&opts, &lsrcdir, Some(&prefix))?
+                } else {
+                    info!("No deps, no need to vendor!");
+                }
             } else {
                 warn!(
                     ?lsrcdir,
