@@ -37,17 +37,14 @@ fn main() -> Result<(), io::Error> {
     let args = cli::Opts::parse();
     let terminfodb = Database::from_env().expect("Loaded environment");
     let is_termcolorsupported = terminfodb.get::<cap::MaxColors>().is_some();
-    let to_color = match std::io::stdout().is_terminal() {
-        true => {
-            let coloroption = &args.color;
-            match coloroption {
-                clap::ColorChoice::Auto => is_termcolorsupported,
-                clap::ColorChoice::Always => true,
-                clap::ColorChoice::Never => false,
-            }
+    let to_color = matches!(std::io::stdout().is_terminal(), true if {
+        let coloroption = &args.color;
+        match coloroption {
+            clap::ColorChoice::Auto => is_termcolorsupported,
+            clap::ColorChoice::Always => true,
+            clap::ColorChoice::Never => false,
         }
-        false => false,
-    };
+    });
 
     let filter_layer = EnvFilter::try_from_default_env()
         .or_else(|_| EnvFilter::try_new("info"))
@@ -60,9 +57,11 @@ fn main() -> Result<(), io::Error> {
         .with_line_number(true)
         .with_env_filter(filter_layer)
         .with_level(true)
+        .pretty()
         .init();
 
     info!("🎢 Starting OBS Service Cargo Vendor.");
+    debug!(?args);
     debug!(?args.srcdir);
     debug!(?args.srctar);
     let tmpdir = tempfile::Builder::new()
