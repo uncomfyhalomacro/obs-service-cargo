@@ -116,9 +116,8 @@ fn main() -> Result<(), io::Error> {
                     warn!("This is not a rust project");
                     warn!("Use the start of the root of the project to your subcrate instead!");
                     // fallback to workdir
-                    src.cargotomls(&args, workdir)?;
+                    src.cargotomls(&args, &workdir)?;
                 }
-                return Ok(());
             }
             Err(err) => return Err(err),
         };
@@ -167,11 +166,10 @@ fn main() -> Result<(), io::Error> {
                         warn!("Use the start of the root of the project to your subcrate instead!");
                         src.cargotomls(&args, &workdir)?;
                     }
-                    return Ok(());
                 }
                 Err(err) => return Err(err),
             };
-        }
+        };
     };
     info!("Vendor operation success! ❤️");
     info!("\n{}", VENDOR_EXAMPLE);
