@@ -53,7 +53,9 @@ pub fn get_project_root(srcdir: impl AsRef<Path>) -> Result<PathBuf, io::Error> 
                         // We don't want going deeper you know...
                         // Logic is quite related to the last `Ok`.
                         break;
-                    };
+                    } else {
+                        get_project_root(anc)?;
+                    }
                 }
             } else if dir.file_name() == Some(&target_file) {
                 return Ok(dir);
@@ -379,7 +381,6 @@ pub fn cargotomls(opts: impl AsRef<Opts>, workdir: impl AsRef<Path>) -> Result<(
         if let Some(prjname) = crateprj.parent() {
             lsrcdir.push(prjname);
             let pathtomanifest = lsrcdir.join("Cargo.toml");
-            let has_deps = has_dependencies(&pathtomanifest).unwrap_or(false);
             trace!(?lsrcdir);
             if pathtomanifest.exists() {
                 info!(?lsrcdir, "Found subcrate!");
@@ -390,16 +391,16 @@ pub fn cargotomls(opts: impl AsRef<Opts>, workdir: impl AsRef<Path>) -> Result<(
                         info!("Subcrate is not a workspace. Please check manually! 🫂");
                     };
                 };
-                if has_deps {
+                if has_dependencies(&pathtomanifest).unwrap_or(false) {
                     info!("Project has dependencies!");
-                    let prefix = match prjname.to_str() {
-                        Some(s) => format!("{}_vendor", s),
-                        None => "".to_string(),
-                    };
-                    vendor(&opts, &lsrcdir, Some(&prefix))?
                 } else {
                     info!("No deps, no need to vendor!");
-                }
+                };
+                let prefix = match prjname.to_str() {
+                    Some(s) => format!("{}_vendor", s),
+                    None => "".to_string(),
+                };
+                vendor(&opts, &lsrcdir, Some(&prefix))?
             } else {
                 warn!(
                     ?lsrcdir,
