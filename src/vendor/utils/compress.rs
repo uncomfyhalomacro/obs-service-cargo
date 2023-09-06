@@ -20,11 +20,53 @@
 use std::ffi::OsStr;
 use std::fs;
 use std::io;
+use std::io::Write;
 use std::path::Path;
 use tar;
 
 #[allow(unused_imports)]
 use tracing::{debug, error, info, trace, warn};
+
+pub fn tar_builder<T>(
+    topdir: &str,
+    srcpath: impl AsRef<Path>,
+    additional_files: &[&str],
+    builder: &mut tar::Builder<T>,
+) -> Result<(), io::Error>
+where
+    T: Write,
+{
+    if !additional_files.is_empty() {
+        info!("Adding additional files!");
+        for f in additional_files {
+            let pathto = &srcpath.as_ref().join(f);
+            info!(?pathto);
+            let exists = pathto.exists();
+            if exists {
+                debug!(?pathto, "Path to file or directory exists!");
+                if pathto.is_file() {
+                    debug!(?pathto, "Path to is file!");
+                    let basedir = pathto.file_name().unwrap_or(OsStr::new(f));
+                    let mut addf = fs::File::open(pathto)?;
+                    builder.append_file(basedir, &mut addf)?;
+                    debug!("Added {} to archive", f);
+                } else if pathto.is_dir() {
+                    builder.append_dir_all("", pathto)?;
+                    debug!("Added {} to archive", f);
+                } else {
+                    warn!("Is this the correct path to file? 🤔");
+                };
+            };
+        }
+    };
+    builder.append_dir_all(topdir, &srcpath)?;
+    builder.finish()?;
+    info!(
+        "Successfully created Xz compressed archive for {}",
+        srcpath.as_ref().to_string_lossy()
+    );
+    Ok(())
+}
 
 pub fn targz(
     topdir: &str,
@@ -34,41 +76,10 @@ pub fn targz(
 ) -> Result<(), io::Error> {
     use flate2::write::GzEncoder;
     use flate2::Compression;
-
-    let src = srcpath.as_ref().to_path_buf();
     let outtar = fs::File::create(outdir.as_ref())?;
-    let enc = GzEncoder::new(outtar, Compression::default());
-    let mut tar = tar::Builder::new(enc);
-    if !additional_files.is_empty() {
-        info!("Adding additional files!");
-        for f in additional_files {
-            let pathto = &src.join(f);
-            info!(?pathto);
-            let exists = pathto.exists();
-            if exists {
-                info!("Path to file or directory exists!");
-                if pathto.is_file() {
-                    info!("Path to is file!");
-                    let basedir = pathto.file_name().unwrap_or(OsStr::new(f));
-                    let mut addf = fs::File::open(pathto)?;
-                    tar.append_file(basedir, &mut addf)?;
-                    debug!("Added {} to archive", f);
-                } else if pathto.is_dir() {
-                    tar.append_dir_all("", pathto)?;
-                    debug!("Added {} to archive", f);
-                } else {
-                    debug!("Is this the correct path to file? 🤔");
-                };
-            };
-        }
-    };
-    tar.append_dir_all(topdir, &src)?;
-    tar.finish()?;
-    info!(
-        "Successfully created Gz compressed archive for {}",
-        src.to_string_lossy()
-    );
-    Ok(())
+    let encoder = GzEncoder::new(outtar, Compression::default());
+    let mut builder = tar::Builder::new(encoder);
+    tar_builder(topdir, srcpath, additional_files, &mut builder)
 }
 
 pub fn tarzst(
@@ -78,41 +89,14 @@ pub fn tarzst(
     additional_files: &[&str],
 ) -> Result<(), io::Error> {
     use zstd::Encoder;
-    use zstd::DEFAULT_COMPRESSION_LEVEL;
-    let src = srcpath.as_ref().to_path_buf();
     let outtar = fs::File::create(outdir.as_ref())?;
-    let enc = Encoder::new(outtar, DEFAULT_COMPRESSION_LEVEL)?.auto_finish();
-    let mut tar = tar::Builder::new(enc);
-    if !additional_files.is_empty() {
-        info!("Adding additional files!");
-        for f in additional_files {
-            let pathto = &src.join(f);
-            info!(?pathto);
-            let exists = pathto.exists();
-            if exists {
-                info!("Path to file or directory exists!");
-                if pathto.is_file() {
-                    info!("Path to is file!");
-                    let basedir = pathto.file_name().unwrap_or(OsStr::new(f));
-                    let mut addf = fs::File::open(pathto)?;
-                    tar.append_file(basedir, &mut addf)?;
-                    debug!("Added {} to archive", f);
-                } else if pathto.is_dir() {
-                    tar.append_dir_all("", pathto)?;
-                    debug!("Added {} to archive", f);
-                } else {
-                    warn!("Is this the correct path to file? 🤔");
-                };
-            };
-        }
-    };
-    tar.append_dir_all(topdir, &src)?;
-    tar.finish()?;
-    info!(
-        "Successfully created Zstd compressed archive for {}",
-        src.to_string_lossy()
-    );
-    Ok(())
+    let mut enc_builder = Encoder::new(outtar, 19)?;
+    enc_builder.include_checksum(true)?;
+    let threads: u32 = std::thread::available_parallelism()?.get() as u32;
+    enc_builder.multithread(threads)?;
+    let encoder = enc_builder.auto_finish();
+    let mut builder = tar::Builder::new(encoder);
+    tar_builder(topdir, srcpath, additional_files, &mut builder)
 }
 
 pub fn tarxz(
@@ -121,39 +105,17 @@ pub fn tarxz(
     srcpath: impl AsRef<Path>,
     additional_files: &[&str],
 ) -> Result<(), io::Error> {
+    use xz2::stream::Check::Sha256;
+    use xz2::stream::MtStreamBuilder;
     use xz2::write::XzEncoder;
-    let src = srcpath.as_ref().to_path_buf();
     let outtar = fs::File::create(outdir.as_ref())?;
-    let enc = XzEncoder::new(outtar, 6);
-    let mut tar = tar::Builder::new(enc);
-    if !additional_files.is_empty() {
-        info!("Adding additional files!");
-        for f in additional_files {
-            let pathto = &src.join(f);
-            info!(?pathto);
-            let exists = pathto.exists();
-            if exists {
-                info!("Path to file or directory exists!");
-                if pathto.is_file() {
-                    info!("Path to is file!");
-                    let basedir = pathto.file_name().unwrap_or(OsStr::new(f));
-                    let mut addf = fs::File::open(pathto)?;
-                    tar.append_file(basedir, &mut addf)?;
-                    debug!("Added {} to archive", f);
-                } else if pathto.is_dir() {
-                    tar.append_dir_all("", pathto)?;
-                    debug!("Added {} to archive", f);
-                } else {
-                    warn!("Is this the correct path to file? 🤔");
-                };
-            };
-        }
-    };
-    tar.append_dir_all(topdir, &src)?;
-    tar.finish()?;
-    info!(
-        "Successfully created Xz compressed archive for {}",
-        src.to_string_lossy()
-    );
-    Ok(())
+    let threads: u32 = std::thread::available_parallelism()?.get() as u32;
+    let enc_builder = MtStreamBuilder::new()
+        .preset(6)
+        .threads(threads)
+        .check(Sha256)
+        .encoder()?;
+    let encoder = XzEncoder::new_stream(outtar, enc_builder);
+    let mut builder = tar::Builder::new(encoder);
+    tar_builder(topdir, srcpath, additional_files, &mut builder)
 }
