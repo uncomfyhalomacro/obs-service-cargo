@@ -54,9 +54,6 @@ fn main() -> Result<(), io::Error> {
     let workdir: PathBuf = tmpdir.path().into();
     debug!("Created temporary working directory: {:?}", workdir);
 
-    // One is required over the other and there can't be both anyway.
-    // NOTE: Because our struct `Opt` requires srctar or srcdir but not both, we put
-    // some `unreachable!` macros because they cannot be reached after all.
     info!("Checking sources before vendor 🥡");
     if let Some(src) = &args.srcdir {
         info!("Confirmed sources is a directory: {:?}", src.srcdir);
