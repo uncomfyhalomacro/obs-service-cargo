@@ -1,24 +1,15 @@
-// SPDX-License-Identifier: GPL-2.0
+// SPDX-License-Identifier: MPL-2.0
 
 // Copyright (C) 2023  Soc Virnyl Estela
 
-// This program is free software; you can redistribute it and/or
-// modify it under the terms of the GNU General Public License
-// as published by the Free Software Foundation; either version 2
-// of the License, or (at your option) any later version.
-
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
-
-// You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-// 02110-1301, USA.
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use clap::Parser;
+use glob::glob;
 use obs_service_cargo::cli;
+use obs_service_cargo::cli::SrcTar;
 use obs_service_cargo::consts::{PREFIX, VENDOR_EXAMPLE};
 use obs_service_cargo::vendor::utils;
 
@@ -123,53 +114,76 @@ fn main() -> Result<(), io::Error> {
         };
     };
     if let Some(src) = &args.srctar {
+        // TODO: Transfer this into a function
         info!(
             "Confirmed sources is a compressed tarball: {:?}",
             src.srctar
         );
-        if src.srctar.exists() {
-            src.decompress(&workdir)?;
-            debug!(?workdir);
-            match utils::get_project_root(&workdir) {
-                Ok(prjdir) => {
-                    debug!("Guessed project root at {:?}", prjdir);
-                    // Addressed limitations of get_project_root
-                    let pathtomanifest = prjdir.join("Cargo.toml");
-                    if pathtomanifest.exists() {
-                        if let Ok(isworkspace) = utils::is_workspace(&pathtomanifest) {
-                            if isworkspace {
-                                info!("Project uses workspace! 👀");
-                                if utils::has_dependencies(&pathtomanifest).unwrap_or(false) {
-                                    info!("Workspace has global dependencies!");
-                                } else {
-                                    info!("No global dependencies! May vendor dependencies of member crates");
-                                };
-                            } else {
-                                info!("Project is not a workspace. Please check manually! 🫂");
-                                if utils::has_dependencies(&pathtomanifest).unwrap_or(false) {
-                                    info!("Project has dependencies!");
-                                } else {
-                                    info!("No deps, no need to vendor!");
-                                };
-                            };
-                        };
+        for entry in
+            glob(&src.srctar.as_os_str().to_string_lossy()).expect("Failed to read glob pattern")
+        {
+            debug!(?entry, "Globbed result");
+            match entry {
+                Ok(balls) => {
+                    let newsrc = SrcTar { srctar: balls };
+                    if newsrc.srctar.exists() {
+                        newsrc.decompress(&workdir)?;
+                        debug!(?newsrc.srctar);
+                        debug!(?workdir);
+                        match utils::get_project_root(&workdir) {
+                            Ok(prjdir) => {
+                                debug!("Guessed project root at {:?}", prjdir);
+                                // Addressed limitations of get_project_root
+                                let pathtomanifest = prjdir.join("Cargo.toml");
+                                if pathtomanifest.exists() {
+                                    if let Ok(isworkspace) = utils::is_workspace(&pathtomanifest) {
+                                        if isworkspace {
+                                            info!("Project uses workspace! 👀");
+                                            if utils::has_dependencies(&pathtomanifest)
+                                                .unwrap_or(false)
+                                            {
+                                                info!("Workspace has global dependencies!");
+                                            } else {
+                                                info!("No global dependencies! May vendor dependencies of member crates");
+                                            };
+                                        } else {
+                                            info!("Project is not a workspace. Please check manually! 🫂");
+                                            if utils::has_dependencies(&pathtomanifest)
+                                                .unwrap_or(false)
+                                            {
+                                                info!("Project has dependencies!");
+                                            } else {
+                                                info!("No deps, no need to vendor!");
+                                            };
+                                        };
+                                    };
 
-                        src.vendor(&args, &prjdir)?;
-                        if !args.cargotoml.is_empty() {
-                            info!("Subcrates to vendor found!");
-                            src.cargotomls(&args, &prjdir)?;
-                        } else {
-                            info!("No subcrates to vendor!");
+                                    newsrc.vendor(&args, &prjdir)?;
+                                    if !args.cargotoml.is_empty() {
+                                        info!("Subcrates to vendor found!");
+                                        newsrc.cargotomls(&args, &prjdir)?;
+                                    } else {
+                                        info!("No subcrates to vendor!");
+                                    };
+                                } else {
+                                    warn!("This is not a rust project");
+                                    warn!("Use the start of the root of the project to your subcrate instead!");
+                                    newsrc.cargotomls(&args, &workdir)?;
+                                };
+                            }
+                            Err(err) => return Err(err),
                         };
                     } else {
-                        warn!("This is not a rust project");
-                        warn!("Use the start of the root of the project to your subcrate instead!");
-                        src.cargotomls(&args, &workdir)?;
+                        error!(?newsrc, "Source does not exist based on path");
+                        panic!();
                     }
                 }
-                Err(err) => return Err(err),
+                Err(e) => {
+                    error!(?e, "Does not match with glob");
+                    panic!();
+                }
             };
-        };
+        }
     };
     info!("Vendor operation success! ❤️");
     info!("\n{}", VENDOR_EXAMPLE);
