@@ -1,3 +1,4 @@
+
 // SPDX-License-Identifier: MPL-2.0
 
 // Copyright (C) 2023  Soc Virnyl Estela
@@ -6,6 +7,24 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 // SPDX-License-Identifier: MPL-2.0
+
+#![deny(warnings)]
+#![warn(unused_extern_crates)]
+// Enable some groups of clippy lints.
+#![deny(clippy::suspicious)]
+#![deny(clippy::perf)]
+// Specific lints to enforce.
+#![warn(clippy::todo)]
+#![deny(clippy::unimplemented)]
+#![deny(clippy::unwrap_used)]
+#![deny(clippy::expect_used)]
+#![deny(clippy::panic)]
+#![deny(clippy::await_holding_lock)]
+#![deny(clippy::needless_pass_by_value)]
+#![deny(clippy::trivially_copy_pass_by_ref)]
+#![deny(clippy::disallowed_types)]
+#![deny(clippy::manual_let_else)]
+#![allow(clippy::unreachable)]
 
 use clap::Parser;
 use glob::glob;
@@ -53,13 +72,12 @@ fn main() -> Result<(), io::Error> {
         .with_line_number(true)
         .with_env_filter(filter_layer)
         .with_level(true)
-        .pretty()
+        // Somehow pretty actually looks dank nasty
+        // .pretty()
         .init();
 
     info!("🎢 Starting OBS Service Cargo Vendor.");
     debug!(?args);
-    debug!(?args.srcdir);
-    debug!(?args.srctar);
     let tmpdir = tempfile::Builder::new()
         .prefix(PREFIX)
         .rand_bytes(8)
@@ -91,20 +109,16 @@ fn main() -> Result<(), io::Error> {
 
     let workdir = match src_type {
         Src::Dir(src) => {
-            info!("Confirmed sources is a directory: {:?}", src.srcdir);
             let basename = &src.srcdir.file_name().unwrap_or(src.srcdir.as_os_str());
             let newworkdir = &workdir.join(basename);
             debug!(?newworkdir);
             utils::copy_dir_all(&src.srcdir, newworkdir)?;
+            // Only emit the message *after* we actually like ... checked.
+            info!("Confirmed source is a directory: {:?}", src.srcdir);
             // Update the work dir
             newworkdir.clone()
         }
         Src::Tar(src) => {
-            info!(
-                "Confirmed sources is a compressed tarball: {:?}",
-                src.srctar
-            );
-
             let glob_iter = match glob(&src.srctar.as_os_str().to_string_lossy()) {
                 Ok(gi) => gi,
                 Err(e) => {
@@ -145,6 +159,10 @@ fn main() -> Result<(), io::Error> {
                         newsrc.decompress(&workdir)?;
                         debug!(?newsrc.srctar);
                         debug!(?workdir);
+
+                        // Only announce once we actually know.
+                        info!("Confirmed source is a compressed tarball: {:?}", src.srctar);
+
                         // Leave the workdir as is.
                         workdir
                     } else {
@@ -166,13 +184,14 @@ fn main() -> Result<(), io::Error> {
     debug!(?workdir);
     match utils::get_project_root(&workdir) {
         Ok(prjdir) => {
-            debug!("Guessed project root at {:?}", prjdir);
             // Addressed limitations of get_project_root
             let pathtomanifest = prjdir.join("Cargo.toml");
             if pathtomanifest.exists() {
+                // Again, announce once we actually confirm the details.
+                debug!("Guessed project root at {:?}", prjdir);
                 if let Ok(isworkspace) = utils::is_workspace(&pathtomanifest) {
                     if isworkspace {
-                        info!("Project uses workspace! 👀");
+                        info!("Project uses a workspace.");
                         if utils::has_dependencies(&pathtomanifest).unwrap_or(false) {
                             info!("Workspace has global dependencies!");
                         } else {
@@ -181,17 +200,34 @@ fn main() -> Result<(), io::Error> {
                             );
                         };
                     } else {
+                        // What is actually the need for the manual check? What's
+                        // actionable here?
                         info!("Project is not a workspace. Please check manually! 🫂");
                         if utils::has_dependencies(&pathtomanifest).unwrap_or(false) {
                             info!("Project has dependencies!");
                         } else {
-                            info!("No deps, no need to vendor!");
+                            // This is what we call a "zero cost" abstraction.
+                            info!("No dependencies, no need to vendor!");
                         };
                     };
                 };
 
                 utils::vendor(&args, &prjdir, None)?;
                 if !args.cargotoml.is_empty() {
+                    // Should this be here? If there are cargo.toml's listed, then
+                    // it probably means that there are just a "list of crates" and we can't
+                    // use the workspace manifest. For example s390-tools has neither a
+                    // workspace NOR a project root. It's just 4 crates. So I think that
+                    // here we actually need to not touch cargotomls.
+                    //
+                    // Consider it like this - you either have cargotomls listed because you
+                    // want to exactly tell us where they are.
+                    //
+                    // OR
+                    //
+                    // You want us to guess and find it for you.
+                    //
+                    // Does that make sense?
                     info!("Subcrates to vendor found!");
                     utils::cargotomls(&args, &prjdir)?;
                 } else {
@@ -212,6 +248,7 @@ fn main() -> Result<(), io::Error> {
 
     // Remove temporary directory.
     tmpdir.close()?;
+
     info!("Successfully ran OBS Service Cargo Vendor 🥳");
     Ok(())
 }
