@@ -25,5 +25,5 @@
 #![allow(clippy::unreachable)]
 
 fn main() {
-    todo!()
+    println!("Todo-uwu");
 }

@@ -88,7 +88,13 @@ fn cargo_command(
         .args(options)
         .current_dir(curdir.as_ref())
         .output()
-        .expect("Successfully ran cargo update");
+        .map_err(|e| {
+            error!(err = ?e, "Unable to build cargo command");
+            ExecutionError {
+                command: format!("cargo {}", subcommand),
+                exit_code: None,
+            }
+        })?;
     trace!(?cmd);
     let stdoutput = String::from_utf8_lossy(&cmd.stdout).to_string();
     if !cmd.status.success() {
@@ -110,7 +116,7 @@ impl Debug for ExecutionError {
         let msg = format!(
             "ExecutionError {{ command: `{}`, exit_code: `{}` }}",
             self.command,
-            self.exit_code.unwrap()
+            self.exit_code.unwrap_or(-1)
         );
 
         write!(f, "{}", msg)
@@ -122,7 +128,7 @@ impl Display for ExecutionError {
         let msg = format!(
             "Failed to run command `{}`. Has exit code `{}`",
             self.command,
-            self.exit_code.unwrap()
+            self.exit_code.unwrap_or(-1)
         );
 
         write!(f, "{}", msg)
@@ -162,7 +168,10 @@ pub fn vendor(
         let update_manifest_path =
             unsafe { std::str::from_utf8_unchecked(manifest_path.as_os_str().as_bytes()) };
         update_options.push(update_manifest_path);
-        cargo_command("update", &update_options, &prjdir).expect("Succesfully ran command");
+        cargo_command("update", &update_options, &prjdir).map_err(|e| {
+            error!(err = %e);
+            io::Error::new(io::ErrorKind::Other, "Unable to execute cargo")
+        })?;
         info!("Successfully ran cargo update ❤️");
     } else {
         warn!("Disabled update of dependencies. You may reenable it for security updates.");
@@ -173,8 +182,10 @@ pub fn vendor(
         unsafe { std::str::from_utf8_unchecked(manifest_path.as_os_str().as_bytes()) };
     vendor_options.push(vendor_manifest_path);
     debug!(?vendor_options);
-    let cargo_vendor_output =
-        cargo_command("vendor", &vendor_options, &prjdir).expect("Successfully ran command");
+    let cargo_vendor_output = cargo_command("vendor", &vendor_options, &prjdir).map_err(|e| {
+        error!(err = %e);
+        io::Error::new(io::ErrorKind::Other, "Unable to execute cargo")
+    })?;
     debug!(?outdir);
     let mut cargo_config_outdir = fs::File::create(outdir.join(cargo_config))?;
     cargo_config_outdir.write_all(cargo_vendor_output.as_bytes())?;
@@ -292,7 +303,11 @@ impl Error for UnsupportedExtError {}
 
 pub fn get_compression_type(file: &Path) -> Result<Compression, UnsupportedExtError> {
     if file.is_file() {
-        let info = infer::get_from_path(file).expect("File is known");
+        let info = infer::get_from_path(file).map_err(|e| {
+            error!(err = ?e, "Unable to determine file information");
+            UnsupportedExtError { ext: None }
+        })?;
+
         let extension = match file.extension() {
             Some(ext) => unsafe { std::str::from_utf8_unchecked(ext.as_bytes()) },
             None => "unknown extension",

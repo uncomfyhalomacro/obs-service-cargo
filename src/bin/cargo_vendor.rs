@@ -1,4 +1,3 @@
-
 // SPDX-License-Identifier: MPL-2.0
 
 // Copyright (C) 2023  Soc Virnyl Estela
@@ -50,7 +49,14 @@ enum Src {
 
 fn main() -> Result<(), io::Error> {
     let args = cli::Opts::parse();
-    let terminfodb = Database::from_env().expect("Loaded environment");
+    let terminfodb = Database::from_env().map_err(|e| {
+        error!(err = ?e, "Unable to access terminfo db. This is a bug!");
+        io::Error::new(
+            io::ErrorKind::Other,
+            "Unable to access terminfo db. This is a bug!",
+        )
+    })?;
+
     let is_termcolorsupported = terminfodb.get::<cap::MaxColors>().is_some();
     let to_color = matches!(std::io::stdout().is_terminal(), true if {
         let coloroption = &args.color;
@@ -61,9 +67,7 @@ fn main() -> Result<(), io::Error> {
         }
     });
 
-    let filter_layer = EnvFilter::try_from_default_env()
-        .or_else(|_| EnvFilter::try_new("info"))
-        .expect("Env filter set");
+    let filter_layer = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
     tracing_subscriber::fmt()
         .with_level(true)
@@ -82,7 +86,11 @@ fn main() -> Result<(), io::Error> {
         .prefix(PREFIX)
         .rand_bytes(8)
         .tempdir()
-        .expect("Failed to create temporary working directory.");
+        .map_err(|e| {
+            error!(err = ?e, "Unable to create temporary work directory.");
+            e
+        })?;
+
     let workdir: PathBuf = tmpdir.path().into();
     debug!("Created temporary working directory: {:?}", workdir);
 
@@ -140,7 +148,7 @@ fn main() -> Result<(), io::Error> {
                         "No files matched srctar glob input",
                     ));
                 }
-                1 => globs.pop().unwrap(),
+                1 => globs.remove(0),
                 _ => {
                     error!("Multiple files matched srctar glob input");
                     return Err(io::Error::new(

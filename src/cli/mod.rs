@@ -120,6 +120,3 @@ impl Display for Compression {
         write!(f, "{}", msg)
     }
 }
-
-// cargo audit stuff starts here
-use crate::audit;
