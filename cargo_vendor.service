@@ -1,0 +1,37 @@
+<service name="cargo_vendor">
+  <summary> OBS Source Service to vendor all crates.io and dependencies for a Rust project</summary>
+  <description>
+  <![CDATA[
+  This service extracts a Rust application source,
+  searches for a Rust application containing a Cargo.toml file,
+  download all crates.io and dependecies,
+  and creates a vendor.tar[.<tar compression>] to be committed allowing fully offline
+  builds of Rust applications.
+  ]]></description>
+  <parameter name="strategy">
+    <description>Legacy argument, no longer used. Values: vendor. Default: vendor</description>
+  </parameter>
+  <parameter name="srcdir">
+    <description>Where to find unpacked sources. Cannot be used with srctar. One of srcdir or srctar must be defined</description>
+  </parameter>
+  <parameter name="srctar">
+    <description>Where to find packed sources. Cannot be used with srcdir. One of srcdir or srctar must be defined</description>
+  </parameter>
+  <parameter name="outdir">
+    <description>Specify where to put the vendor tarball and cargo_config file</description>
+  </parameter>
+  <parameter name="update">
+    <description>Specify whether to run a cargo update before vendor. Default: False</description>
+    <allowedvalue>false</allowedvalue>
+    <allowedvalue>true</allowedvalue>
+  </parameter>
+  <parameter name="tag">
+    <description>Specify a string to append to the tarball and cargo_config filenames</description>
+  </parameter>
+  <parameter name="compression">
+    <description>Specify the vendor tarball compression method. Default: "zst".</description>
+  </parameter>
+  <parameter name="cargotoml">
+    <description>Specify a Cargo.toml to use. Can be specified multiple times. Default will autodetect.</description>
+  </parameter>
+</service>
