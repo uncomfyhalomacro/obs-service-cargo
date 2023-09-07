@@ -6,7 +6,6 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use crate::vendor::utils;
 use crate::vendor::utils::decompress;
 use crate::vendor::utils::get_compression_type;
 use crate::vendor::utils::UnsupportedExtError;
@@ -80,6 +79,7 @@ impl SrcTar {
     pub fn get_compression(&self) -> Result<Compression, UnsupportedExtError> {
         get_compression_type(&self.srctar)
     }
+
     pub fn decompress(&self, outdir: impl AsRef<Path>) -> Result<(), io::Error> {
         match self.get_compression() {
             Ok(comp) => match comp {
@@ -89,20 +89,6 @@ impl SrcTar {
             },
             Err(err) => Err(io::Error::new(io::ErrorKind::Other, err)),
         }
-    }
-    pub fn vendor(
-        &self,
-        opts: impl AsRef<Opts>,
-        prjdir: impl AsRef<Path>,
-    ) -> Result<(), io::Error> {
-        utils::vendor(opts, prjdir, None)
-    }
-    pub fn cargotomls(
-        &self,
-        opts: impl AsRef<Opts>,
-        workdir: impl AsRef<Path>,
-    ) -> Result<(), io::Error> {
-        utils::cargotomls(opts, workdir)
     }
 }
 
@@ -114,23 +100,6 @@ pub struct SrcDir {
         conflicts_with = "srctar"
     )]
     pub srcdir: PathBuf,
-}
-
-impl SrcDir {
-    pub fn vendor(
-        &self,
-        opts: impl AsRef<Opts>,
-        prjdir: impl AsRef<Path>,
-    ) -> Result<(), io::Error> {
-        utils::vendor(opts, prjdir, None)
-    }
-    pub fn cargotomls(
-        &self,
-        opts: impl AsRef<Opts>,
-        workdir: impl AsRef<Path>,
-    ) -> Result<(), io::Error> {
-        utils::cargotomls(opts, workdir)
-    }
 }
 
 #[derive(ValueEnum, Default, Debug, Clone)]
