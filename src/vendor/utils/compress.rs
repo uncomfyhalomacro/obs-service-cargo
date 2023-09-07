@@ -51,7 +51,7 @@ where
     builder.append_dir_all(topdir, &srcpath)?;
     builder.finish()?;
     info!(
-        "Successfully created Xz compressed archive for {}",
+        "Successfully created compressed archive for {}",
         srcpath.as_ref().to_string_lossy()
     );
     Ok(())
@@ -94,7 +94,8 @@ pub fn tarxz(
     srcpath: impl AsRef<Path>,
     additional_files: &[&str],
 ) -> Result<(), io::Error> {
-    use xz2::stream::Check::Sha256;
+    // Crc32 is simpler/faster and often hardware accelerated.
+    use xz2::stream::Check::Crc32;
     use xz2::stream::MtStreamBuilder;
     use xz2::write::XzEncoder;
     let outtar = fs::File::create(outdir.as_ref())?;
@@ -102,7 +103,7 @@ pub fn tarxz(
     let enc_builder = MtStreamBuilder::new()
         .preset(6)
         .threads(threads)
-        .check(Sha256)
+        .check(Crc32)
         .encoder()?;
     let encoder = XzEncoder::new_stream(outtar, enc_builder);
     let mut builder = tar::Builder::new(encoder);
